@@ -1,0 +1,79 @@
+# FeedbackHub .gitignore
+
+# ===========================================
+# Build Artifacts
+# ===========================================
+# Rust
+target/
+**/target/
+*.rlib
+*.so
+*.dylib
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+ios/.symlinks/
+android/.gradle/
+android/app/build/
+android/build/
+android/captures/
+android/.idea/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.pnp/
+.pnp.js
+
+# ===========================================
+# IDEs
+# ===========================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===========================================
+# Environment Files
+# ===========================================
+.env
+.env.local
+.env.*.local
+.env.test
+*.pem
+*.key
+*.crt
+*.pfx
+
+# ===========================================
+# Logs
+# ===========================================
+*.log
+logs/
+*.tmp
+
+# ===========================================
+# Test & Coverage
+# ===========================================
+coverage/
+htmlcov/
+.nyc_output/
+
+# ===========================================
+# OS Files
+# ===========================================
+.DS_Store
+Thumbs.db
