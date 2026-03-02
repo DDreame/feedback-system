@@ -5,9 +5,12 @@ use serde::Serialize;
 use sqlx::PgPool;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
+use crate::config::JwtConfig;
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
+    pub jwt: JwtConfig,
 }
 
 #[derive(Serialize)]
@@ -19,11 +22,12 @@ async fn health_handler() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
 }
 
-pub fn create_router(pool: PgPool) -> Router {
-    let state = AppState { db: pool };
+pub fn create_router(pool: PgPool, jwt: JwtConfig) -> Router {
+    let state = AppState { db: pool, jwt };
 
     let api_v1 = Router::new()
-        .route("/auth/register", post(auth::register));
+        .route("/auth/register", post(auth::register))
+        .route("/auth/login", post(auth::login));
 
     Router::new()
         .route("/health", get(health_handler))
@@ -44,6 +48,22 @@ mod tests {
     use sqlx::postgres::PgPoolOptions;
     use tower::ServiceExt;
 
+    fn test_jwt() -> crate::config::JwtConfig {
+        crate::config::JwtConfig {
+            secret: "test-secret-at-least-32-chars!!".to_string(),
+            access_token_expiry_secs: 3600,
+            refresh_token_expiry_secs: 604800,
+        }
+    }
+
+    fn lazy_pool() -> PgPool {
+        PgPoolOptions::new()
+            .max_connections(1)
+            // connect_lazy skips the initial connection attempt
+            .connect_lazy("postgres://unused:unused@localhost/unused")
+            .expect("lazy pool should be constructable")
+    }
+
     /// Build a router backed by a real pool only when DATABASE_URL is set.
     /// Returns `None` when no DB is available so tests can be skipped cleanly.
     async fn try_build_router() -> Option<Router> {
@@ -58,19 +78,13 @@ mod tests {
             .connect(&url)
             .await
             .ok()?;
-        Some(create_router(pool))
+        Some(create_router(pool, test_jwt()))
     }
 
     #[tokio::test]
     async fn health_endpoint_returns_200() {
         // The health endpoint doesn't touch the DB; use a lazy pool that never connects.
-        let pool = PgPoolOptions::new()
-            .max_connections(1)
-            // connect_lazy skips the initial connection attempt
-            .connect_lazy("postgres://unused:unused@localhost/unused")
-            .expect("lazy pool should be constructable");
-
-        let app = create_router(pool);
+        let app = create_router(lazy_pool(), test_jwt());
         let response = app
             .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
             .await
@@ -81,12 +95,7 @@ mod tests {
 
     #[tokio::test]
     async fn health_endpoint_returns_ok_json() {
-        let pool = PgPoolOptions::new()
-            .max_connections(1)
-            .connect_lazy("postgres://unused:unused@localhost/unused")
-            .expect("lazy pool should be constructable");
-
-        let app = create_router(pool);
+        let app = create_router(lazy_pool(), test_jwt());
         let response = app
             .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
             .await
@@ -100,12 +109,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_route_returns_404() {
-        let pool = PgPoolOptions::new()
-            .max_connections(1)
-            .connect_lazy("postgres://unused:unused@localhost/unused")
-            .expect("lazy pool should be constructable");
-
-        let app = create_router(pool);
+        let app = create_router(lazy_pool(), test_jwt());
         let response = app
             .oneshot(
                 Request::builder()

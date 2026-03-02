@@ -1,4 +1,5 @@
 use axum::{extract::State, http::StatusCode, Json};
+use serde::Deserialize;
 
 use crate::api::AppState;
 use crate::error::AppError;
@@ -13,6 +14,24 @@ pub async fn register(
     Ok((StatusCode::CREATED, Json(serde_json::json!({ "developer": developer }))))
 }
 
+#[derive(Deserialize)]
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
+}
+
+pub async fn login(
+    State(state): State<AppState>,
+    Json(req): Json<LoginRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let tokens = service::auth::login(&state.db, &req.email, &req.password, &state.jwt).await?;
+    Ok(Json(serde_json::json!({
+        "access_token": tokens.access_token,
+        "refresh_token": tokens.refresh_token,
+        "developer": tokens.developer,
+    })))
+}
+
 #[cfg(test)]
 mod tests {
     use axum::{
@@ -25,12 +44,20 @@ mod tests {
 
     use crate::api::create_router;
 
+    fn test_jwt() -> crate::config::JwtConfig {
+        crate::config::JwtConfig {
+            secret: "test-secret-at-least-32-chars!!".to_string(),
+            access_token_expiry_secs: 3600,
+            refresh_token_expiry_secs: 604800,
+        }
+    }
+
     fn lazy_router() -> axum::Router {
         let pool = PgPoolOptions::new()
             .max_connections(1)
             .connect_lazy("postgres://unused:unused@localhost/unused")
             .expect("lazy pool should be constructable");
-        create_router(pool)
+        create_router(pool, test_jwt())
     }
 
     async fn real_router() -> axum::Router {
@@ -43,7 +70,7 @@ mod tests {
             .await
             .expect("should connect");
         crate::db::run_migrations(&pool).await.expect("migrations should run");
-        create_router(pool)
+        create_router(pool, test_jwt())
     }
 
     #[tokio::test]
@@ -193,5 +220,103 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // ── Login endpoint tests ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn login_empty_body_returns_4xx() {
+        let app = lazy_router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(response.status().is_client_error(), "got {}", response.status());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
+    async fn login_returns_200_with_tokens() {
+        let app = real_router().await;
+        let email = format!("api_login_{}@example.com", uuid::Uuid::now_v7());
+
+        // Register first
+        let reg_body = serde_json::json!({ "email": email, "password": "password123", "name": "L" });
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(reg_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let login_body = serde_json::json!({ "email": email, "password": "password123" });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(login_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+        assert!(json["access_token"].is_string());
+        assert!(json["refresh_token"].is_string());
+        assert_eq!(json["developer"]["email"], email);
+        assert!(!json["developer"].as_object().unwrap().contains_key("password_hash"));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
+    async fn login_wrong_password_returns_401() {
+        let app = real_router().await;
+        let email = format!("api_badpw_{}@example.com", uuid::Uuid::now_v7());
+
+        let reg_body = serde_json::json!({ "email": email, "password": "password123", "name": "X" });
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/register")
+                    .header("content-type", "application/json")
+                    .body(Body::from(reg_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let login_body = serde_json::json!({ "email": email, "password": "wrongpassword" });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(login_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 }

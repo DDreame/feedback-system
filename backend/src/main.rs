@@ -38,7 +38,7 @@ async fn main() {
         .expect("Failed to run database migrations");
 
     let addr = SocketAddr::new(config.server.host.parse().expect("Invalid host"), config.server.port);
-    let app = api::create_router(pool);
+    let app = api::create_router(pool, config.jwt);
 
     tracing::info!("Listening on {addr}");
 
