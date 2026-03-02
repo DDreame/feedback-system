@@ -99,8 +99,13 @@ pub enum ConfigError {
 mod tests {
     use super::*;
 
+    // Tests that mutate env vars must run serially to avoid flaky races.
+    static ENV_MUTEX: std::sync::LazyLock<std::sync::Mutex<()>> =
+        std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
+
     #[test]
     fn loads_config_from_env_vars() {
+        let _guard = ENV_MUTEX.lock().unwrap();
         // Set up environment variables
         unsafe {
             std::env::set_var("SERVER_HOST", "127.0.0.1");
@@ -127,6 +132,7 @@ mod tests {
 
     #[test]
     fn uses_default_values_when_optional_vars_missing() {
+        let _guard = ENV_MUTEX.lock().unwrap();
         // Only set required variables
         unsafe {
             std::env::set_var("DATABASE_URL", "postgres://user:pass@localhost:5432/feedback");
@@ -152,6 +158,7 @@ mod tests {
 
     #[test]
     fn returns_error_when_required_vars_missing() {
+        let _guard = ENV_MUTEX.lock().unwrap();
         unsafe {
             std::env::remove_var("DATABASE_URL");
             std::env::remove_var("JWT_SECRET");
@@ -163,6 +170,7 @@ mod tests {
 
     #[test]
     fn returns_error_for_invalid_port() {
+        let _guard = ENV_MUTEX.lock().unwrap();
         unsafe {
             std::env::set_var("DATABASE_URL", "postgres://localhost/test");
             std::env::set_var("JWT_SECRET", "secret");
