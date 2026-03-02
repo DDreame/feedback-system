@@ -99,4 +99,49 @@ mod tests {
         assert_eq!(column_map["password_hash"], "character varying");
         assert_eq!(column_map["name"], "character varying");
     }
+
+    #[tokio::test]
+    async fn projects_table_exists_with_correct_columns() {
+        let config = DatabaseConfig { url: db_url_from_env(), max_connections: 5 };
+        let pool = create_pool(&config).await.expect("Pool should be created");
+        run_migrations(&pool).await.expect("Migrations should run");
+
+        let columns: Vec<(String, String)> = sqlx::query_as(
+            "SELECT column_name, data_type
+             FROM information_schema.columns
+             WHERE table_name = 'projects'
+             ORDER BY column_name",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("Should query information_schema");
+
+        let column_map: std::collections::HashMap<_, _> = columns.into_iter().collect();
+
+        assert!(column_map.contains_key("id"), "id column missing");
+        assert!(column_map.contains_key("developer_id"), "developer_id column missing");
+        assert!(column_map.contains_key("name"), "name column missing");
+        assert!(column_map.contains_key("description"), "description column missing");
+        assert!(column_map.contains_key("api_key"), "api_key column missing");
+        assert!(column_map.contains_key("created_at"), "created_at column missing");
+        assert!(column_map.contains_key("updated_at"), "updated_at column missing");
+
+        assert_eq!(column_map["id"], "uuid");
+        assert_eq!(column_map["developer_id"], "uuid");
+        assert_eq!(column_map["api_key"], "character varying");
+
+        // Verify api_key unique constraint exists
+        let unique_constraints: Vec<(String,)> = sqlx::query_as(
+            "SELECT constraint_name FROM information_schema.table_constraints
+             WHERE table_name = 'projects' AND constraint_type = 'UNIQUE'",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("Should query constraints");
+
+        assert!(
+            unique_constraints.iter().any(|(name,)| name.contains("api_key")),
+            "api_key unique constraint missing"
+        );
+    }
 }
