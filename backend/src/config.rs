@@ -99,9 +99,7 @@ pub enum ConfigError {
 mod tests {
     use super::*;
 
-    // Tests that mutate env vars must run serially to avoid flaky races.
-    static ENV_MUTEX: std::sync::LazyLock<std::sync::Mutex<()>> =
-        std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
+    use crate::test_support::ENV_MUTEX;
 
     #[test]
     fn loads_config_from_env_vars() {

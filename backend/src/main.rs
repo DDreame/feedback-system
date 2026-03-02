@@ -3,6 +3,16 @@ mod config;
 mod db;
 mod error;
 
+/// Shared test infrastructure. Only compiled during `cargo test`.
+#[cfg(test)]
+pub(crate) mod test_support {
+    /// Serialize every test that reads or writes process environment variables.
+    /// Acquire this lock at the start of any test using `std::env::set_var`,
+    /// `remove_var`, `var`, or `dotenvy` calls so they don't race each other.
+    pub static ENV_MUTEX: std::sync::LazyLock<std::sync::Mutex<()>> =
+        std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
+}
+
 use std::net::SocketAddr;
 
 #[tokio::main]

@@ -41,7 +41,12 @@ mod tests {
     /// Build a router backed by a real pool only when DATABASE_URL is set.
     /// Returns `None` when no DB is available so tests can be skipped cleanly.
     async fn try_build_router() -> Option<Router> {
-        let url = std::env::var("DATABASE_URL").ok()?;
+        // Acquire the shared env mutex only long enough to read the URL.
+        let url = {
+            let _guard = crate::test_support::ENV_MUTEX.lock().unwrap();
+            let _ = dotenvy::dotenv_override();
+            std::env::var("DATABASE_URL").ok()?
+        };
         let pool = PgPoolOptions::new()
             .max_connections(1)
             .connect(&url)
@@ -109,9 +114,9 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL env var)"]
+    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn health_endpoint_with_real_db() {
-        let app = try_build_router().await.expect("DATABASE_URL must be set");
+        let app = try_build_router().await.expect("DATABASE_URL must be set in backend/.env");
         let response = app
             .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
             .await
