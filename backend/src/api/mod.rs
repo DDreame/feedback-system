@@ -1,4 +1,6 @@
-use axum::{routing::get, Json, Router};
+mod auth;
+
+use axum::{routing::get, routing::post, Json, Router};
 use serde::Serialize;
 use sqlx::PgPool;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -20,8 +22,12 @@ async fn health_handler() -> Json<HealthResponse> {
 pub fn create_router(pool: PgPool) -> Router {
     let state = AppState { db: pool };
 
+    let api_v1 = Router::new()
+        .route("/auth/register", post(auth::register));
+
     Router::new()
         .route("/health", get(health_handler))
+        .nest("/api/v1", api_v1)
         .with_state(state)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
