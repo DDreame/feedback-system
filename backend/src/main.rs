@@ -2,6 +2,7 @@ mod api;
 mod config;
 mod db;
 mod error;
+mod model;
 
 /// Shared test infrastructure. Only compiled during `cargo test`.
 #[cfg(test)]
@@ -20,6 +21,9 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
+
+    // Load .env file before reading config (ignored if file doesn't exist)
+    let _ = dotenvy::dotenv();
 
     let config = config::AppConfig::from_env().expect("Failed to load configuration");
 

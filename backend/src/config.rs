@@ -48,10 +48,12 @@ fn parse_env<T: std::str::FromStr>(key: &str, value: &str) -> Result<T, ConfigEr
 }
 
 impl AppConfig {
+    /// Load configuration from environment variables.
+    ///
+    /// `.env` file loading is the caller's responsibility (e.g. call `dotenvy::dotenv()` in
+    /// `main` before calling this). Tests that manipulate env vars directly should NOT load
+    /// the file, which is why the two concerns are kept separate.
     pub fn from_env() -> Result<Self, ConfigError> {
-        // Load .env file if it exists (ignore errors)
-        let _ = dotenvy::dotenv();
-
         let database_url = require_env("DATABASE_URL")?;
         let jwt_secret = require_env("JWT_SECRET")?;
 
