@@ -159,3 +159,25 @@
   - 3 个测试: 有效 key、缺少 header、无效 key
   - cargo test 通过 (73 passed, 15 ignored)
 
+### 1.4 终端用户与会话
+
+- [x] Task 1.4.1: 终端用户和会话 - 数据库迁移 - 完成
+  - migrations/20260302000003_create_end_users_and_conversations.sql
+  - end_users: id, project_id (FK), device_id, name(nullable), UNIQUE(project_id, device_id)
+  - conversations: id, project_id (FK), end_user_id (FK), status CHECK('open'/'closed')
+  - db::tests::end_users_and_conversations_tables_exist 验证
+
+- [x] Task 1.4.2: 终端用户和会话 - 数据模型 - 完成
+  - model/end_user.rs: EndUser, InitEndUser (Deserialize), EndUserResponse (Serialize)
+  - model/conversation.rs: Conversation, ConversationStatus enum, ConversationResponse
+  - 9 个单元测试覆盖序列化、From转换、DTO反序列化
+
+- [x] Task 1.4.3: SDK 初始化端点 - 完成
+  - service/sdk.rs: find_or_create_end_user() + find_or_create_conversation()
+    - 幂等：相同 device_id 返回已有用户和未关闭会话
+    - 空 device_id 返回 400
+  - api/sdk.rs: POST /api/v1/sdk/init → 200 { end_user, conversation }
+    - 认证: X-API-Key (AuthProject extractor)
+  - 9 个测试覆盖服务逻辑和 API 端点
+  - cargo test 通过 (93 passed, 15 ignored)
+
