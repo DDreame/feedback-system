@@ -1,7 +1,8 @@
 mod auth;
 pub mod middleware;
+mod project;
 
-use axum::{routing::get, routing::post, Json, Router};
+use axum::{routing::get, routing::post, routing::delete, routing::patch, Json, Router};
 use serde::Serialize;
 use sqlx::PgPool;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -29,7 +30,9 @@ pub fn create_router(pool: PgPool, jwt: JwtConfig) -> Router {
     let api_v1 = Router::new()
         .route("/auth/register", post(auth::register))
         .route("/auth/login", post(auth::login))
-        .route("/auth/refresh", post(auth::refresh));
+        .route("/auth/refresh", post(auth::refresh))
+        .route("/projects", post(project::create).get(project::list))
+        .route("/projects/{id}", get(project::get).patch(project::update).delete(project::delete));
 
     Router::new()
         .route("/health", get(health_handler))
