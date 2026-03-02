@@ -1,8 +1,10 @@
 use sqlx::PgPool;
 
+use crate::config::JwtConfig;
 use crate::error::AppError;
 use crate::model::developer::{CreateDeveloper, Developer, DeveloperResponse};
-use crate::utils::password::hash_password;
+use crate::utils::jwt::{generate_token, TokenKind};
+use crate::utils::password::{hash_password, verify_password};
 
 /// Register a new developer account.
 ///
@@ -50,6 +52,52 @@ fn validate_registration(dto: &CreateDeveloper) -> Result<(), AppError> {
         return Err(AppError::BadRequest("Name must not be empty".to_string()));
     }
     Ok(())
+}
+
+/// Tokens returned by a successful login.
+#[derive(Debug)]
+pub struct LoginTokens {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub developer: DeveloperResponse,
+}
+
+/// Authenticate a developer and return a signed access + refresh token pair.
+///
+/// Returns `AppError::Unauthorized` for any authentication failure
+/// (unknown email or wrong password) — deliberately no distinction to
+/// prevent user enumeration.
+pub async fn login(
+    pool: &PgPool,
+    email: &str,
+    password: &str,
+    jwt: &JwtConfig,
+) -> Result<LoginTokens, AppError> {
+    const AUTH_FAILED: &str = "Invalid email or password";
+
+    let developer: Developer = sqlx::query_as(
+        "SELECT id, email, password_hash, name, created_at, updated_at
+         FROM developers WHERE email = $1",
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| AppError::Internal(format!("Database error during login: {e}")))?
+    .ok_or_else(|| AppError::Unauthorized(AUTH_FAILED.to_string()))?;
+
+    if !verify_password(password, &developer.password_hash)? {
+        return Err(AppError::Unauthorized(AUTH_FAILED.to_string()));
+    }
+
+    let dev_uuid = developer.id;
+    let access_token = generate_token(dev_uuid, &jwt.secret, TokenKind::Access, jwt.access_token_expiry_secs)?;
+    let refresh_token = generate_token(dev_uuid, &jwt.secret, TokenKind::Refresh, jwt.refresh_token_expiry_secs)?;
+
+    Ok(LoginTokens {
+        access_token,
+        refresh_token,
+        developer: DeveloperResponse::from(developer),
+    })
 }
 
 #[cfg(test)]
@@ -147,5 +195,90 @@ mod tests {
             .execute(&pool)
             .await
             .expect("cleanup");
+    }
+
+    // ── Login integration tests ───────────────────────────────────────────────
+
+    fn test_jwt_config() -> crate::config::JwtConfig {
+        crate::config::JwtConfig {
+            secret: "test-secret-at-least-32-chars-long!!".to_string(),
+            access_token_expiry_secs: 3600,
+            refresh_token_expiry_secs: 604800,
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
+    async fn login_returns_tokens_for_valid_credentials() {
+        let pool = get_pool().await;
+        let email = format!("login_ok_{}@example.com", uuid::Uuid::now_v7());
+        let password = "password123";
+
+        // Register first
+        let dto = make_valid_dto(&email, password, "Login Test");
+        register(&pool, dto).await.expect("registration");
+
+        let tokens = login(&pool, &email, password, &test_jwt_config())
+            .await
+            .expect("login should succeed");
+
+        assert!(!tokens.access_token.is_empty());
+        assert!(!tokens.refresh_token.is_empty());
+        assert_eq!(tokens.developer.email, email);
+
+        // Verify the tokens are valid JWTs with the correct kind
+        let access_claims = crate::utils::jwt::validate_token(
+            &tokens.access_token,
+            &test_jwt_config().secret,
+            Some(crate::utils::jwt::TokenKind::Access),
+        )
+        .expect("access token must be valid");
+        assert_eq!(access_claims.sub, tokens.developer.id.to_string());
+
+        crate::utils::jwt::validate_token(
+            &tokens.refresh_token,
+            &test_jwt_config().secret,
+            Some(crate::utils::jwt::TokenKind::Refresh),
+        )
+        .expect("refresh token must be valid");
+
+        // Cleanup
+        sqlx::query("DELETE FROM developers WHERE email = $1")
+            .bind(&email)
+            .execute(&pool)
+            .await
+            .expect("cleanup");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
+    async fn login_fails_with_wrong_password() {
+        let pool = get_pool().await;
+        let email = format!("login_bad_{}@example.com", uuid::Uuid::now_v7());
+
+        register(&pool, make_valid_dto(&email, "correct_pass", "Dev"))
+            .await
+            .expect("registration");
+
+        let err = login(&pool, &email, "wrong_pass", &test_jwt_config())
+            .await
+            .expect_err("wrong password should fail");
+        assert!(matches!(err, AppError::Unauthorized(_)));
+
+        sqlx::query("DELETE FROM developers WHERE email = $1")
+            .bind(&email)
+            .execute(&pool)
+            .await
+            .expect("cleanup");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
+    async fn login_fails_with_unknown_email() {
+        let pool = get_pool().await;
+        let err = login(&pool, "nobody@example.com", "any_pass", &test_jwt_config())
+            .await
+            .expect_err("unknown email should fail");
+        assert!(matches!(err, AppError::Unauthorized(_)));
     }
 }
