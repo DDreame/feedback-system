@@ -118,6 +118,48 @@ pub async fn delete(pool: &PgPool, project_id: Uuid, developer_id: Uuid) -> Resu
     Ok(())
 }
 
+/// Regenerate the API key for a project, verifying ownership.
+/// Returns the updated ProjectResponse with the new api_key.
+pub async fn regenerate_api_key(
+    pool: &PgPool,
+    project_id: Uuid,
+    developer_id: Uuid,
+) -> Result<ProjectResponse, AppError> {
+    // Verify ownership
+    get(pool, project_id, developer_id).await?;
+
+    let new_key = generate_api_key();
+
+    let project = sqlx::query_as::<_, Project>(
+        "UPDATE projects SET api_key = $1, updated_at = NOW()
+         WHERE id = $2
+         RETURNING id, developer_id, name, description, api_key, created_at, updated_at",
+    )
+    .bind(&new_key)
+    .bind(project_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| AppError::Internal(format!("DB error: {e}")))?;
+
+    Ok(ProjectResponse::from(project))
+}
+
+/// Look up a project by its API key (used by SDK authentication).
+pub async fn get_by_api_key(pool: &PgPool, api_key: &str) -> Result<ProjectResponse, AppError> {
+    let project: Option<Project> = sqlx::query_as(
+        "SELECT id, developer_id, name, description, api_key, created_at, updated_at
+         FROM projects WHERE api_key = $1",
+    )
+    .bind(api_key)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| AppError::Internal(format!("DB error: {e}")))?;
+
+    project
+        .map(ProjectResponse::from)
+        .ok_or_else(|| AppError::Unauthorized("Invalid API key".to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

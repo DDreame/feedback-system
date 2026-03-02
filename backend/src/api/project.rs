@@ -63,6 +63,15 @@ pub async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn regenerate_api_key(
+    State(state): State<AppState>,
+    auth: AuthDeveloper,
+    Path(project_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let project = service::project::regenerate_api_key(&state.db, project_id, auth.developer_id).await?;
+    Ok(Json(serde_json::json!({ "project": project })))
+}
+
 #[cfg(test)]
 mod tests {
     use axum::{
@@ -230,5 +239,39 @@ mod tests {
                 .body(Body::empty()).unwrap()
         ).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn regenerate_api_key_changes_key() {
+        let app = real_router().await;
+        let email = format!("api_regen_{}@test.com", uuid::Uuid::now_v7());
+        let (_, token) = register_dev(&app, &email).await;
+
+        // Create project
+        let body = serde_json::json!({ "name": "RegenApp" });
+        let resp = app.clone().oneshot(
+            Request::builder().method("POST").uri("/api/v1/projects")
+                .header("content-type", "application/json")
+                .header("Authorization", bearer(&token))
+                .body(Body::from(body.to_string())).unwrap()
+        ).await.unwrap();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let proj_id = json["project"]["id"].as_str().unwrap().to_string();
+        let old_key = json["project"]["api_key"].as_str().unwrap().to_string();
+
+        // Regenerate
+        let resp = app.oneshot(
+            Request::builder().method("POST").uri(format!("/api/v1/projects/{proj_id}/api-key"))
+                .header("Authorization", bearer(&token))
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let new_key = json["project"]["api_key"].as_str().unwrap().to_string();
+
+        assert_ne!(old_key, new_key, "api key should change after regeneration");
+        assert!(new_key.starts_with("proj_"));
     }
 }

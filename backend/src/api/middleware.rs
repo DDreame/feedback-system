@@ -6,6 +6,8 @@ use uuid::Uuid;
 
 use crate::api::AppState;
 use crate::error::AppError;
+use crate::model::project::ProjectResponse;
+use crate::service;
 use crate::utils::jwt::{validate_token, TokenKind};
 
 /// Axum extractor for authenticated developer requests.
@@ -31,6 +33,25 @@ impl FromRequestParts<AppState> for AuthDeveloper {
     }
 }
 
+/// Axum extractor for SDK endpoints authenticated with an API key.
+///
+/// Expects `X-API-Key: proj_<...>` header.
+/// On success, holds the full `ProjectResponse` for the matched project.
+/// On failure, returns `AppError::Unauthorized`.
+pub struct AuthProject {
+    pub project: ProjectResponse,
+}
+
+impl FromRequestParts<AppState> for AuthProject {
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        let api_key = extract_api_key(&parts.headers)?;
+        let project = service::project::get_by_api_key(&state.db, api_key).await?;
+        Ok(AuthProject { project })
+    }
+}
+
 fn extract_bearer_token(headers: &HeaderMap) -> Result<&str, AppError> {
     let header_value = headers
         .get("Authorization")
@@ -43,6 +64,14 @@ fn extract_bearer_token(headers: &HeaderMap) -> Result<&str, AppError> {
     header_str
         .strip_prefix("Bearer ")
         .ok_or_else(|| AppError::Unauthorized("Authorization header must use Bearer scheme".to_string()))
+}
+
+fn extract_api_key(headers: &HeaderMap) -> Result<&str, AppError> {
+    headers
+        .get("X-API-Key")
+        .ok_or_else(|| AppError::Unauthorized("Missing X-API-Key header".to_string()))?
+        .to_str()
+        .map_err(|_| AppError::Unauthorized("Invalid X-API-Key header".to_string()))
 }
 
 #[cfg(test)]
@@ -174,6 +203,81 @@ mod tests {
             .await
             .unwrap();
 
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // ── AuthProject (SDK API key) tests ──────────────────────────────────────
+
+    async fn real_sdk_router() -> Router {
+        let _guard = crate::test_support::ENV_MUTEX.lock().unwrap();
+        let _ = dotenvy::dotenv_override();
+        let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let pool = PgPoolOptions::new().max_connections(2).connect(&url).await.expect("connect");
+        crate::db::run_migrations(&pool).await.expect("migrations");
+        let state = crate::api::AppState { db: pool, jwt: test_jwt() };
+
+        async fn sdk_endpoint(auth: AuthProject) -> Json<serde_json::Value> {
+            Json(serde_json::json!({ "project_id": auth.project.id.to_string() }))
+        }
+
+        Router::new()
+            .route("/sdk/test", get(sdk_endpoint))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn valid_api_key_grants_sdk_access() {
+        let app = real_sdk_router().await;
+
+        // Create a developer + project to get a real API key
+        let _guard = crate::test_support::ENV_MUTEX.lock().unwrap();
+        let _ = dotenvy::dotenv_override();
+        let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let pool = PgPoolOptions::new().max_connections(2).connect(&url).await.expect("connect");
+
+        let dev_id = uuid::Uuid::now_v7();
+        sqlx::query("INSERT INTO developers (id, email, password_hash, name) VALUES ($1,$2,$3,$4)")
+            .bind(dev_id).bind(format!("sdk_mw_{}@test.com", dev_id))
+            .bind("$argon2id$hash").bind("SDK MW Dev")
+            .execute(&pool).await.expect("insert dev");
+
+        let dto = crate::model::project::CreateProject { name: "SDK App".to_string(), description: None };
+        let project = crate::service::project::create(&pool, dev_id, dto).await.expect("create project");
+
+        let response = app.oneshot(
+            Request::builder().uri("/sdk/test")
+                .header("X-API-Key", &project.api_key)
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["project_id"], project.id.to_string());
+
+        // Cleanup
+        sqlx::query("DELETE FROM projects WHERE developer_id = $1").bind(dev_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM developers WHERE id = $1").bind(dev_id).execute(&pool).await.ok();
+    }
+
+    #[tokio::test]
+    async fn missing_api_key_header_returns_401() {
+        // We need a real router here but the SDK endpoint just needs the extractor to reject
+        let app = real_sdk_router().await;
+        let response = app.oneshot(
+            Request::builder().uri("/sdk/test").body(Body::empty()).unwrap()
+        ).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn invalid_api_key_returns_401() {
+        let app = real_sdk_router().await;
+        let response = app.oneshot(
+            Request::builder().uri("/sdk/test")
+                .header("X-API-Key", "proj_invalid_key_that_does_not_exist")
+                .body(Body::empty()).unwrap()
+        ).await.unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 }
