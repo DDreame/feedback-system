@@ -5,6 +5,7 @@ use crate::api::AppState;
 use crate::error::AppError;
 use crate::model::developer::CreateDeveloper;
 use crate::service;
+use crate::utils::jwt::{generate_token, validate_token, TokenKind};
 
 pub async fn register(
     State(state): State<AppState>,
@@ -30,6 +31,34 @@ pub async fn login(
         "refresh_token": tokens.refresh_token,
         "developer": tokens.developer,
     })))
+}
+
+#[derive(Deserialize)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+}
+
+/// Exchange a valid refresh token for a new access token.
+pub async fn refresh(
+    State(state): State<AppState>,
+    Json(req): Json<RefreshRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    // Validate and assert kind == Refresh
+    let claims = validate_token(&req.refresh_token, &state.jwt.secret, Some(TokenKind::Refresh))?;
+
+    let developer_id = claims
+        .sub
+        .parse::<uuid::Uuid>()
+        .map_err(|_| AppError::Unauthorized("Invalid token subject".to_string()))?;
+
+    let new_access_token = generate_token(
+        developer_id,
+        &state.jwt.secret,
+        TokenKind::Access,
+        state.jwt.access_token_expiry_secs,
+    )?;
+
+    Ok(Json(serde_json::json!({ "access_token": new_access_token })))
 }
 
 #[cfg(test)]
@@ -312,6 +341,86 @@ mod tests {
                     .uri("/api/v1/auth/login")
                     .header("content-type", "application/json")
                     .body(Body::from(login_body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // ── Refresh endpoint tests ────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn refresh_with_valid_refresh_token_returns_new_access_token() {
+        let jwt = test_jwt();
+        let dev_id = uuid::Uuid::now_v7();
+        let refresh_token =
+            crate::utils::jwt::generate_token(dev_id, &jwt.secret, crate::utils::jwt::TokenKind::Refresh, 604800)
+                .unwrap();
+
+        let body = serde_json::json!({ "refresh_token": refresh_token });
+        let response = lazy_router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/refresh")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(json["access_token"].is_string(), "response must contain access_token");
+
+        // The new access token should be a valid access token for the same developer
+        let claims = crate::utils::jwt::validate_token(
+            json["access_token"].as_str().unwrap(),
+            &jwt.secret,
+            Some(crate::utils::jwt::TokenKind::Access),
+        )
+        .expect("returned access token must be valid");
+        assert_eq!(claims.sub, dev_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn refresh_with_access_token_returns_401() {
+        let jwt = test_jwt();
+        let dev_id = uuid::Uuid::now_v7();
+        let access_token =
+            crate::utils::jwt::generate_token(dev_id, &jwt.secret, crate::utils::jwt::TokenKind::Access, 3600)
+                .unwrap();
+
+        let body = serde_json::json!({ "refresh_token": access_token });
+        let response = lazy_router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/refresh")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn refresh_with_invalid_token_returns_401() {
+        let body = serde_json::json!({ "refresh_token": "not.a.jwt" });
+        let response = lazy_router()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/refresh")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
                     .unwrap(),
             )
             .await

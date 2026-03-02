@@ -28,7 +28,8 @@ pub fn create_router(pool: PgPool, jwt: JwtConfig) -> Router {
 
     let api_v1 = Router::new()
         .route("/auth/register", post(auth::register))
-        .route("/auth/login", post(auth::login));
+        .route("/auth/login", post(auth::login))
+        .route("/auth/refresh", post(auth::refresh));
 
     Router::new()
         .route("/health", get(health_handler))
