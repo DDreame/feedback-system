@@ -203,4 +203,33 @@ mod tests {
         assert_eq!(cv_map["id"], "uuid");
         assert_eq!(cv_map["end_user_id"], "uuid");
     }
+
+    #[tokio::test]
+    async fn messages_table_exists_with_correct_columns() {
+        let config = DatabaseConfig { url: db_url_from_env(), max_connections: 5 };
+        let pool = create_pool(&config).await.expect("Pool should be created");
+        run_migrations(&pool).await.expect("Migrations should run");
+
+        let columns: Vec<(String, String)> = sqlx::query_as(
+            "SELECT column_name, data_type
+             FROM information_schema.columns
+             WHERE table_name = 'messages'
+             ORDER BY column_name",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("Should query messages columns");
+
+        let col_map: std::collections::HashMap<_, _> = columns.into_iter().collect();
+        assert!(col_map.contains_key("id"), "messages.id missing");
+        assert!(col_map.contains_key("conversation_id"), "messages.conversation_id missing");
+        assert!(col_map.contains_key("sender_type"), "messages.sender_type missing");
+        assert!(col_map.contains_key("sender_id"), "messages.sender_id missing");
+        assert!(col_map.contains_key("message_type"), "messages.message_type missing");
+        assert!(col_map.contains_key("content"), "messages.content missing");
+        assert!(col_map.contains_key("created_at"), "messages.created_at missing");
+        assert_eq!(col_map["id"], "uuid");
+        assert_eq!(col_map["conversation_id"], "uuid");
+        assert_eq!(col_map["content"], "text");
+    }
 }
