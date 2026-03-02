@@ -66,4 +66,37 @@ mod tests {
         // Running migrations again is idempotent
         run_migrations(&pool).await.expect("Re-running migrations should be idempotent");
     }
+
+    #[tokio::test]
+    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
+    async fn developers_table_exists_with_correct_columns() {
+        let config = DatabaseConfig { url: db_url_from_env(), max_connections: 5 };
+        let pool = create_pool(&config).await.expect("Pool should be created");
+        run_migrations(&pool).await.expect("Migrations should run");
+
+        // Check table exists and has the expected columns
+        let columns: Vec<(String, String)> = sqlx::query_as(
+            "SELECT column_name, data_type
+             FROM information_schema.columns
+             WHERE table_name = 'developers'
+             ORDER BY column_name",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("Should query information_schema");
+
+        let column_map: std::collections::HashMap<_, _> = columns.into_iter().collect();
+
+        assert!(column_map.contains_key("id"), "id column missing");
+        assert!(column_map.contains_key("email"), "email column missing");
+        assert!(column_map.contains_key("password_hash"), "password_hash column missing");
+        assert!(column_map.contains_key("name"), "name column missing");
+        assert!(column_map.contains_key("created_at"), "created_at column missing");
+        assert!(column_map.contains_key("updated_at"), "updated_at column missing");
+
+        assert_eq!(column_map["id"], "uuid");
+        assert_eq!(column_map["email"], "character varying");
+        assert_eq!(column_map["password_hash"], "character varying");
+        assert_eq!(column_map["name"], "character varying");
+    }
 }
