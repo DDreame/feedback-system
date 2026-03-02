@@ -49,3 +49,19 @@
   - docker-compose.yml: PostgreSQL 17-alpine + Redis 7-alpine
   - 两个服务均配置 healthcheck 和持久化 volume
   - backend/.env.example: 所有配置项及默认值说明
+  - 实际使用 Podman 运行容器（docker.dreamful.life 镜像代理）
+
+## 测试基础设施修复（跨任务）
+  - 将 ENV_MUTEX 提升至 main::test_support，所有涉及 env var 的测试统一序列化
+  - 集成测试使用 dotenv_override() + ENV_MUTEX 窗口，覆盖系统 DATABASE_URL
+  - 修复 SELECT 1 类型解码：PostgreSQL 返回 INT4，改用 (i32,)
+  - 18 个测试全部通过（含 3 个 PostgreSQL 集成测试，0 ignored）
+
+### 1.2 认证系统
+
+- [x] Task 1.2.1: developers 表迁移 - 完成
+  - migrations/20260302000001_create_developers_table.sql
+  - 字段: id (UUID), email (UNIQUE), password_hash, name, created_at, updated_at
+  - idx_developers_email 唯一索引
+  - 集成测试: 验证迁移后表结构（列名 + 数据类型）正确
+  - cargo test 通过 (18 passed, 0 ignored)
