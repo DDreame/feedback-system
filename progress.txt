@@ -1,0 +1,10 @@
+# Feedback System - 开发进度
+
+## Phase 1: 核心基础 (MVP)
+
+### 1.1 项目初始化与基础设施
+
+- [x] Task 1.1.1: 初始化 Rust 后端项目 - 完成
+  - 使用 cargo init 创建 backend 项目
+  - 配置 Cargo.toml 核心依赖: axum, tokio, sqlx, redis, serde, jsonwebtoken, argon2, uuid, chrono, thiserror, reqwest, tracing
+  - 验证编译通过，cargo test 通过 (1 test)
