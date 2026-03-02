@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+target/
+.dart_tool/
+build/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+lcov.info
+tarpaulin-report.html
+
+# Database
+*.sqlite
+*.db
+
+# OMC state
+.omc/
