@@ -22,3 +22,30 @@
   - 实现 IntoResponse trait，自动转换为正确的 HTTP 状态码和 JSON 响应体
   - 响应格式: { "error": { "code": 400, "message": "..." } }
   - cargo test 通过 (10 tests)
+
+- [x] Task 1.1.4: 数据库连接与连接池 - 完成
+  - 实现 db::create_pool(config) → PgPoolOptions + connect
+  - AppState 结构体持有 PgPool，供 API 层使用
+  - 修复 config.rs 测试并发竞争：引入 LazyLock<Mutex> 序列化 env var 测试
+  - 集成测试 (ignored) 覆盖真实连接 + 简单查询
+  - cargo test 通过 (14 passed, 2 ignored)
+
+- [x] Task 1.1.5: HTTP 服务器基础框架 - 完成
+  - 实现 api::create_router(pool) → Axum Router + TraceLayer + CorsLayer(permissive)
+  - GET /health → 200 {"status":"ok"} (无状态，不依赖 DB)
+  - connect_lazy 支持无 DB 环境的单元测试
+  - 测试覆盖: 200 响应、正确 JSON body、404 未知路由
+  - main.rs 完整启动流程: 加载配置 → 创建连接池 → 绑定监听器 → serve
+  - cargo test 通过 (14 passed, 2 ignored)
+
+- [x] Task 1.1.6: 数据库迁移基础设施 - 完成
+  - 实现 db::run_migrations() 包装 sqlx::migrate! 宏
+  - 创建 migrations/20260302000000_initial_setup.sql (启用 uuid-ossp 扩展)
+  - main.rs 在启动 serve 前自动执行迁移
+  - 集成测试 (ignored): 迁移幂等性验证
+  - cargo test 通过 (14 passed, 3 ignored)
+
+- [x] Task 1.1.7: Docker 开发环境 - 完成
+  - docker-compose.yml: PostgreSQL 17-alpine + Redis 7-alpine
+  - 两个服务均配置 healthcheck 和持久化 volume
+  - backend/.env.example: 所有配置项及默认值说明
