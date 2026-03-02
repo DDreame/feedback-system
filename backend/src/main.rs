@@ -3,6 +3,7 @@ mod config;
 mod db;
 mod error;
 mod model;
+mod utils;
 
 /// Shared test infrastructure. Only compiled during `cargo test`.
 #[cfg(test)]
