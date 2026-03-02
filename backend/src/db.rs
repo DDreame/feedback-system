@@ -11,6 +11,13 @@ pub async fn create_pool(config: &DatabaseConfig) -> Result<PgPool, AppError> {
         .map_err(|e| AppError::Internal(format!("Failed to connect to database: {e}")))
 }
 
+pub async fn run_migrations(pool: &PgPool) -> Result<(), AppError> {
+    sqlx::migrate!("./migrations")
+        .run(pool)
+        .await
+        .map_err(|e| AppError::Internal(format!("Failed to run database migrations: {e}")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -40,5 +47,18 @@ mod tests {
         let pool = create_pool(&config).await.expect("Pool creation should succeed");
         let row: (i64,) = sqlx::query_as("SELECT 1").fetch_one(&pool).await.expect("Query should succeed");
         assert_eq!(row.0, 1);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL env var)"]
+    async fn run_migrations_succeeds_on_fresh_db() {
+        let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let config = DatabaseConfig { url, max_connections: 5 };
+        let pool = create_pool(&config).await.expect("Pool should be created");
+
+        run_migrations(&pool).await.expect("Migrations should run without error");
+
+        // Running migrations again is idempotent
+        run_migrations(&pool).await.expect("Re-running migrations should be idempotent");
     }
 }

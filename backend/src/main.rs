@@ -17,6 +17,10 @@ async fn main() {
         .await
         .expect("Failed to connect to database");
 
+    db::run_migrations(&pool)
+        .await
+        .expect("Failed to run database migrations");
+
     let addr = SocketAddr::new(config.server.host.parse().expect("Invalid host"), config.server.port);
     let app = api::create_router(pool);
 
