@@ -144,4 +144,63 @@ mod tests {
             "api_key unique constraint missing"
         );
     }
+
+    #[tokio::test]
+    async fn end_users_and_conversations_tables_exist() {
+        let config = DatabaseConfig { url: db_url_from_env(), max_connections: 5 };
+        let pool = create_pool(&config).await.expect("Pool should be created");
+        run_migrations(&pool).await.expect("Migrations should run");
+
+        // Check end_users table columns
+        let eu_columns: Vec<(String, String)> = sqlx::query_as(
+            "SELECT column_name, data_type
+             FROM information_schema.columns
+             WHERE table_name = 'end_users'
+             ORDER BY column_name",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("Should query end_users columns");
+
+        let eu_map: std::collections::HashMap<_, _> = eu_columns.into_iter().collect();
+        assert!(eu_map.contains_key("id"), "end_users.id missing");
+        assert!(eu_map.contains_key("project_id"), "end_users.project_id missing");
+        assert!(eu_map.contains_key("device_id"), "end_users.device_id missing");
+        assert!(eu_map.contains_key("name"), "end_users.name missing");
+        assert!(eu_map.contains_key("created_at"), "end_users.created_at missing");
+        assert!(eu_map.contains_key("updated_at"), "end_users.updated_at missing");
+        assert_eq!(eu_map["id"], "uuid");
+        assert_eq!(eu_map["project_id"], "uuid");
+
+        // Verify (project_id, device_id) unique constraint
+        let eu_unique: Vec<(String,)> = sqlx::query_as(
+            "SELECT constraint_name FROM information_schema.table_constraints
+             WHERE table_name = 'end_users' AND constraint_type = 'UNIQUE'",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("Should query end_users constraints");
+        assert!(!eu_unique.is_empty(), "end_users unique constraint missing");
+
+        // Check conversations table columns
+        let cv_columns: Vec<(String, String)> = sqlx::query_as(
+            "SELECT column_name, data_type
+             FROM information_schema.columns
+             WHERE table_name = 'conversations'
+             ORDER BY column_name",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("Should query conversations columns");
+
+        let cv_map: std::collections::HashMap<_, _> = cv_columns.into_iter().collect();
+        assert!(cv_map.contains_key("id"), "conversations.id missing");
+        assert!(cv_map.contains_key("project_id"), "conversations.project_id missing");
+        assert!(cv_map.contains_key("end_user_id"), "conversations.end_user_id missing");
+        assert!(cv_map.contains_key("status"), "conversations.status missing");
+        assert!(cv_map.contains_key("created_at"), "conversations.created_at missing");
+        assert!(cv_map.contains_key("updated_at"), "conversations.updated_at missing");
+        assert_eq!(cv_map["id"], "uuid");
+        assert_eq!(cv_map["end_user_id"], "uuid");
+    }
 }
