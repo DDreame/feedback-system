@@ -1,3 +1,4 @@
+use axum::extract::ws::WebSocketUpgrade;
 use axum::{extract::Query, extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -76,6 +77,9 @@ pub async fn send_message(
     )
     .await?;
 
+    // Broadcast to WebSocket connections in this conversation
+    state.ws.broadcast(body.conversation_id, &msg).await;
+
     Ok((StatusCode::CREATED, Json(SendMessageResponse { message: msg })))
 }
 
@@ -103,6 +107,35 @@ pub async fn list_messages(
     let messages =
         service::chat::list_messages(&state.db, query.conversation_id, query.before, limit).await?;
     Ok(Json(ListMessagesResponse { messages }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WsQuery {
+    pub api_key: String,
+    pub conversation_id: Uuid,
+    pub end_user_id: Uuid,
+}
+
+/// GET /api/v1/sdk/ws?api_key=...&conversation_id=...&end_user_id=...
+///
+/// Upgrades an HTTP connection to WebSocket for real-time messaging.
+/// Uses query parameters for auth since browser WebSocket API cannot set custom headers.
+pub async fn ws_upgrade(
+    State(state): State<AppState>,
+    Query(query): Query<WsQuery>,
+    ws: WebSocketUpgrade,
+) -> Result<axum::response::Response, AppError> {
+    // Validate API key
+    let _project = service::project::get_by_api_key(&state.db, &query.api_key).await?;
+
+    let conn_mgr = state.ws.clone();
+    let db = state.db.clone();
+    let conv_id = query.conversation_id;
+    let user_id = query.end_user_id;
+
+    Ok(ws.on_upgrade(move |socket| {
+        crate::ws::handle_ws_connection(socket, conv_id, user_id, conn_mgr, db)
+    }))
 }
 
 #[cfg(test)]

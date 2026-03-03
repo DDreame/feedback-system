@@ -65,7 +65,7 @@ pub struct Message {
 }
 
 /// Message data safe to return to API consumers.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageResponse {
     pub id: Uuid,
     pub conversation_id: Uuid,

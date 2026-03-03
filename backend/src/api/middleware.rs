@@ -107,7 +107,7 @@ mod tests {
             .max_connections(1)
             .connect_lazy("postgres://unused:unused@localhost/unused")
             .expect("lazy pool");
-        let state = crate::api::AppState { db: pool, jwt: test_jwt() };
+        let state = crate::api::AppState { db: pool, jwt: test_jwt(), ws: crate::ws::ConnectionManager::new() };
         Router::new()
             .route("/protected", get(protected))
             .with_state(state)
@@ -214,7 +214,7 @@ mod tests {
         let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
         let pool = PgPoolOptions::new().max_connections(2).connect(&url).await.expect("connect");
         crate::db::run_migrations(&pool).await.expect("migrations");
-        let state = crate::api::AppState { db: pool, jwt: test_jwt() };
+        let state = crate::api::AppState { db: pool, jwt: test_jwt(), ws: crate::ws::ConnectionManager::new() };
 
         async fn sdk_endpoint(auth: AuthProject) -> Json<serde_json::Value> {
             Json(serde_json::json!({ "project_id": auth.project.id.to_string() }))

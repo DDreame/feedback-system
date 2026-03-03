@@ -5,6 +5,7 @@ mod error;
 mod model;
 mod service;
 mod utils;
+pub(crate) mod ws;
 
 /// Shared test infrastructure. Only compiled during `cargo test`.
 #[cfg(test)]

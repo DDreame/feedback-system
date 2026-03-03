@@ -9,11 +9,13 @@ use sqlx::PgPool;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::config::JwtConfig;
+use crate::ws::ConnectionManager;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
     pub jwt: JwtConfig,
+    pub ws: ConnectionManager,
 }
 
 #[derive(Serialize)]
@@ -26,7 +28,7 @@ async fn health_handler() -> Json<HealthResponse> {
 }
 
 pub fn create_router(pool: PgPool, jwt: JwtConfig) -> Router {
-    let state = AppState { db: pool, jwt };
+    let state = AppState { db: pool, jwt, ws: ConnectionManager::new() };
 
     let api_v1 = Router::new()
         .route("/auth/register", post(auth::register))
@@ -36,7 +38,8 @@ pub fn create_router(pool: PgPool, jwt: JwtConfig) -> Router {
         .route("/projects/{id}", get(project::get).patch(project::update).delete(project::delete))
         .route("/projects/{id}/api-key", post(project::regenerate_api_key))
         .route("/sdk/init", post(sdk::init))
-        .route("/sdk/messages", post(sdk::send_message).get(sdk::list_messages));
+        .route("/sdk/messages", post(sdk::send_message).get(sdk::list_messages))
+        .route("/sdk/ws", get(sdk::ws_upgrade));
 
     Router::new()
         .route("/health", get(health_handler))
