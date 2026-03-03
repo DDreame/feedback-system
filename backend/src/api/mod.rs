@@ -35,7 +35,8 @@ pub fn create_router(pool: PgPool, jwt: JwtConfig) -> Router {
         .route("/projects", post(project::create).get(project::list))
         .route("/projects/{id}", get(project::get).patch(project::update).delete(project::delete))
         .route("/projects/{id}/api-key", post(project::regenerate_api_key))
-        .route("/sdk/init", post(sdk::init));
+        .route("/sdk/init", post(sdk::init))
+        .route("/sdk/messages", post(sdk::send_message).get(sdk::list_messages));
 
     Router::new()
         .route("/health", get(health_handler))

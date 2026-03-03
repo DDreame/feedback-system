@@ -1,11 +1,13 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::Query, extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::api::middleware::AuthProject;
 use crate::api::AppState;
 use crate::error::AppError;
 use crate::model::conversation::ConversationResponse;
 use crate::model::end_user::EndUserResponse;
+use crate::model::message::{MessageResponse, SenderType};
 use crate::service;
 
 #[derive(Debug, Deserialize)]
@@ -43,6 +45,64 @@ pub async fn init(
         service::sdk::find_or_create_conversation(&state.db, project_id, end_user.id).await?;
 
     Ok((StatusCode::OK, Json(SdkInitResponse { end_user, conversation })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SendMessageRequest {
+    pub conversation_id: Uuid,
+    pub content: String,
+    pub end_user_id: Uuid,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SendMessageResponse {
+    pub message: MessageResponse,
+}
+
+/// POST /api/v1/sdk/messages
+///
+/// Send a message from an end user.
+pub async fn send_message(
+    _auth: AuthProject,
+    State(state): State<AppState>,
+    Json(body): Json<SendMessageRequest>,
+) -> Result<(StatusCode, Json<SendMessageResponse>), AppError> {
+    let msg = service::chat::send_message(
+        &state.db,
+        body.conversation_id,
+        &SenderType::EndUser,
+        Some(body.end_user_id),
+        &body.content,
+    )
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(SendMessageResponse { message: msg })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListMessagesQuery {
+    pub conversation_id: Uuid,
+    pub before: Option<Uuid>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ListMessagesResponse {
+    pub messages: Vec<MessageResponse>,
+}
+
+/// GET /api/v1/sdk/messages?conversation_id=...&before=...&limit=...
+///
+/// Retrieve messages for a conversation with cursor-based pagination.
+pub async fn list_messages(
+    _auth: AuthProject,
+    State(state): State<AppState>,
+    Query(query): Query<ListMessagesQuery>,
+) -> Result<Json<ListMessagesResponse>, AppError> {
+    let limit = query.limit.unwrap_or(50);
+    let messages =
+        service::chat::list_messages(&state.db, query.conversation_id, query.before, limit).await?;
+    Ok(Json(ListMessagesResponse { messages }))
 }
 
 #[cfg(test)]
@@ -96,12 +156,36 @@ mod tests {
     }
 
     async fn cleanup(pool: &sqlx::PgPool, dev_id: uuid::Uuid) {
+        sqlx::query("DELETE FROM messages WHERE conversation_id IN (SELECT c.id FROM conversations c JOIN projects p ON c.project_id=p.id WHERE p.developer_id=$1)")
+            .bind(dev_id).execute(pool).await.ok();
         sqlx::query("DELETE FROM conversations WHERE project_id IN (SELECT id FROM projects WHERE developer_id = $1)")
             .bind(dev_id).execute(pool).await.ok();
         sqlx::query("DELETE FROM end_users WHERE project_id IN (SELECT id FROM projects WHERE developer_id = $1)")
             .bind(dev_id).execute(pool).await.ok();
         sqlx::query("DELETE FROM projects WHERE developer_id = $1").bind(dev_id).execute(pool).await.ok();
         sqlx::query("DELETE FROM developers WHERE id = $1").bind(dev_id).execute(pool).await.ok();
+    }
+
+    /// Helper: SDK init to get end_user + conversation ids
+    async fn sdk_init_helper(pool: &sqlx::PgPool, api_key: &str) -> (uuid::Uuid, uuid::Uuid) {
+        let app = crate::api::create_router(pool.clone(), test_jwt());
+        let r = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/sdk/init")
+                    .header("Content-Type", "application/json")
+                    .header("X-API-Key", api_key)
+                    .body(Body::from(r#"{"device_id":"msg-test-device"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = r.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let end_user_id: uuid::Uuid = json["end_user"]["id"].as_str().unwrap().parse().unwrap();
+        let conv_id: uuid::Uuid = json["conversation"]["id"].as_str().unwrap().parse().unwrap();
+        (end_user_id, conv_id)
     }
 
     #[tokio::test]
@@ -230,5 +314,112 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         cleanup(&pool, dev_id).await;
+    }
+
+    // ── Message API tests ────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn send_message_returns_201() {
+        let (_app, pool) = sdk_test_app().await;
+        let (dev_id, api_key) = create_dev_and_project(&pool).await;
+        let (end_user_id, conv_id) = sdk_init_helper(&pool, &api_key).await;
+
+        let body = serde_json::json!({
+            "conversation_id": conv_id,
+            "end_user_id": end_user_id,
+            "content": "Hello from SDK!"
+        });
+
+        let app = crate::api::create_router(pool.clone(), test_jwt());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/sdk/messages")
+                    .header("Content-Type", "application/json")
+                    .header("X-API-Key", &api_key)
+                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["message"]["content"], "Hello from SDK!");
+        assert_eq!(json["message"]["sender_type"], "end_user");
+
+        cleanup(&pool, dev_id).await;
+    }
+
+    #[tokio::test]
+    async fn list_messages_returns_sent_messages() {
+        let (_app, pool) = sdk_test_app().await;
+        let (dev_id, api_key) = create_dev_and_project(&pool).await;
+        let (end_user_id, conv_id) = sdk_init_helper(&pool, &api_key).await;
+
+        // Send two messages
+        for msg in &["First message", "Second message"] {
+            let body = serde_json::json!({
+                "conversation_id": conv_id,
+                "end_user_id": end_user_id,
+                "content": msg
+            });
+            let app = crate::api::create_router(pool.clone(), test_jwt());
+            app.oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/sdk/messages")
+                    .header("Content-Type", "application/json")
+                    .header("X-API-Key", &api_key)
+                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        }
+
+        // List messages
+        let app = crate::api::create_router(pool.clone(), test_jwt());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(&format!("/api/v1/sdk/messages?conversation_id={conv_id}"))
+                    .header("X-API-Key", &api_key)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let messages = json["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 2);
+        // Most recent first
+        assert_eq!(messages[0]["content"], "Second message");
+        assert_eq!(messages[1]["content"], "First message");
+
+        cleanup(&pool, dev_id).await;
+    }
+
+    #[tokio::test]
+    async fn send_message_without_api_key_returns_401() {
+        let (app, _) = sdk_test_app().await;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/sdk/messages")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"conversation_id":"00000000-0000-0000-0000-000000000000","end_user_id":"00000000-0000-0000-0000-000000000000","content":"test"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 }
