@@ -181,3 +181,61 @@
   - 9 个测试覆盖服务逻辑和 API 端点
   - cargo test 通过 (93 passed, 15 ignored)
 
+### 1.5 消息系统
+
+- [x] Task 1.5.1: messages 表迁移 - 完成
+  - migrations/20260302000004_create_messages_table.sql
+  - 字段: id (UUID), conversation_id (FK), sender_type CHECK('developer'/'end_user'/'ai_agent'),
+    sender_id (UUID, nullable), message_type CHECK('text'/'system'), content (TEXT), created_at
+  - conversation_id 索引用于分页查询
+
+- [x] Task 1.5.2: Message 数据模型 - 完成
+  - model/message.rs: Message (sqlx::FromRow), SendMessage (Deserialize), MessageResponse (Serialize)
+  - SenderType enum: Developer, EndUser, AiAgent
+  - MessageType enum: Text, System
+  - 9 个单元测试覆盖序列化、From 转换、DTO 反序列化
+
+- [x] Task 1.5.3: 消息持久化 Service 层 - 完成
+  - service/chat.rs: send_message() 插入消息并返回 MessageResponse
+  - list_messages() 支持游标分页，before 参数实现倒序翻页
+  - 5 个测试覆盖发送、列表、分页
+
+- [x] Task 1.5.4: SDK 消息 HTTP API - 完成
+  - POST /api/v1/sdk/messages → 201 { message: {...} }
+  - GET /api/v1/sdk/messages?conversation_id=...&before=...&limit=... → 200 { messages: [...] }
+  - 4 个集成测试覆盖发送、列表、认证
+
+- [x] Task 1.5.5: WebSocket 连接管理 - 完成
+  - ws.rs: ConnectionManager 基于 tokio broadcast channel
+  - 按 conversation_id 分组管理订阅者，支持广播
+  - handle_ws_connection() 处理连接升级、双向消息转发
+  - 5 个单元测试覆盖订阅、广播、多订阅者、隔离、清理
+
+- [x] Task 1.5.6: WebSocket 消息收发 - 完成
+  - WebSocket 客户端消息格式: { "type": "send_message", "content": "..." }
+  - 服务端广播格式: { "type": "new_message", "message": {...} }
+  - 集成测试: ws_message_persisted_and_broadcast 验证消息持久化+广播
+  - 集成测试: ws_conversations_are_isolated 验证会话隔离
+
+- [x] Task 1.5.7: Redis 在线状态与消息分发 - 完成
+  - service/presence.rs: PresenceService (set_online/set_offline/is_online)
+  - PubSubService (publish) 用于跨实例消息分发
+  - 移除 #[ignore]，测试现已启用
+  - cargo test 通过 (135 passed, 0 ignored)
+
+- [x] Task 1.5.8: 管理端会话 API - 完成
+  - service/admin.rs: list_conversations, get_conversation, update_conversation_status, send_developer_message
+  - api/admin.rs: REST 端点实现
+  - GET /api/v1/projects/:id/conversations - 列出项目会话（支持状态筛选）
+  - GET /api/v1/projects/:id/conversations/:id - 获取会话详情
+  - GET/POST /api/v1/projects/:id/conversations/:id/messages - 获取/发送消息
+  - PATCH /api/v1/projects/:id/conversations/:id/status - 更新会话状态
+  - 7 个集成测试覆盖所有功能
+  - cargo test 通过 (143 passed, 0 ignored)
+
+- [x] Task 1.5.9: 管理端 WebSocket - 完成
+  - GET /api/v1/admin/ws - 管理员 WebSocket 端点
+  - handle_admin_ws_connection() 处理连接、消息收发、权限验证
+  - 支持实时消息推送、开发者回复用户
+  - 会话隔离，权限验证
+
