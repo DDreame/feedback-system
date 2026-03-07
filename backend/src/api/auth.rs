@@ -150,7 +150,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn register_returns_201_with_developer() {
         let app = real_router().await;
         let email = format!("api_reg_{}@example.com", uuid::Uuid::now_v7());
@@ -185,7 +184,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn register_duplicate_email_returns_409() {
         let app = real_router().await;
         let email = format!("api_dup_{}@example.com", uuid::Uuid::now_v7());
@@ -226,7 +224,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn register_invalid_email_returns_400() {
         let app = real_router().await;
 
@@ -271,7 +268,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn login_returns_200_with_tokens() {
         let app = real_router().await;
         let email = format!("api_login_{}@example.com", uuid::Uuid::now_v7());
@@ -315,7 +311,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn login_wrong_password_returns_401() {
         let app = real_router().await;
         let email = format!("api_badpw_{}@example.com", uuid::Uuid::now_v7());

@@ -94,7 +94,6 @@ mod tests {
     /// Verify that the Developer struct can actually be loaded from a real DB row via sqlx::FromRow.
     /// Requires a running PostgreSQL instance with migrations applied.
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn developer_from_row_roundtrip() {
         let _guard = crate::test_support::ENV_MUTEX.lock().unwrap();
         let _ = dotenvy::dotenv_override();

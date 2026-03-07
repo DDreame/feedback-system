@@ -44,7 +44,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn create_pool_with_valid_url_succeeds() {
         let config = DatabaseConfig { url: db_url_from_env(), max_connections: 5 };
 
@@ -55,7 +54,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn run_migrations_succeeds_on_fresh_db() {
         let url = db_url_from_env();
         let config = DatabaseConfig { url, max_connections: 5 };
@@ -68,7 +66,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn developers_table_exists_with_correct_columns() {
         let config = DatabaseConfig { url: db_url_from_env(), max_connections: 5 };
         let pool = create_pool(&config).await.expect("Pool should be created");

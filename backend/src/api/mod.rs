@@ -136,7 +136,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn health_endpoint_with_real_db() {
         let app = try_build_router().await.expect("DATABASE_URL must be set in backend/.env");
         let response = app

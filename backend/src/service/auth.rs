@@ -157,7 +157,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn register_succeeds_with_valid_input() {
         let pool = get_pool().await;
         let email = format!("reg_ok_{}@example.com", uuid::Uuid::now_v7());
@@ -177,7 +176,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn register_fails_with_duplicate_email() {
         let pool = get_pool().await;
         let email = format!("dup_{}@example.com", uuid::Uuid::now_v7());
@@ -208,7 +206,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn login_returns_tokens_for_valid_credentials() {
         let pool = get_pool().await;
         let email = format!("login_ok_{}@example.com", uuid::Uuid::now_v7());
@@ -251,7 +248,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn login_fails_with_wrong_password() {
         let pool = get_pool().await;
         let email = format!("login_bad_{}@example.com", uuid::Uuid::now_v7());
@@ -273,7 +269,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running PostgreSQL instance (set DATABASE_URL in backend/.env)"]
     async fn login_fails_with_unknown_email() {
         let pool = get_pool().await;
         let err = login(&pool, "nobody@example.com", "any_pass", &test_jwt_config())
