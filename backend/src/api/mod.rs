@@ -1,9 +1,10 @@
+mod admin;
 mod auth;
 pub mod middleware;
 mod project;
 mod sdk;
 
-use axum::{routing::get, routing::post, Json, Router};
+use axum::{routing::{get, post, patch}, Json, Router};
 use serde::Serialize;
 use sqlx::PgPool;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -37,6 +38,11 @@ pub fn create_router(pool: PgPool, jwt: JwtConfig) -> Router {
         .route("/projects", post(project::create).get(project::list))
         .route("/projects/{id}", get(project::get).patch(project::update).delete(project::delete))
         .route("/projects/{id}/api-key", post(project::regenerate_api_key))
+        .route("/projects/{project_id}/conversations", get(admin::list_conversations))
+        .route("/projects/{project_id}/conversations/{conversation_id}", get(admin::get_conversation))
+        .route("/projects/{project_id}/conversations/{conversation_id}/messages", get(admin::get_messages).post(admin::send_message))
+        .route("/projects/{project_id}/conversations/{conversation_id}/status", patch(admin::update_status))
+        .route("/admin/ws", get(admin::admin_ws_upgrade))
         .route("/sdk/init", post(sdk::init))
         .route("/sdk/messages", post(sdk::send_message).get(sdk::list_messages))
         .route("/sdk/ws", get(sdk::ws_upgrade));
