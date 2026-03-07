@@ -239,3 +239,13 @@
   - 支持实时消息推送、开发者回复用户
   - 会话隔离，权限验证
 
+### 1.6 Web SDK
+
+- [x] Task 1.6.1: 初始化 Web SDK 项目 - 完成
+  - 创建 sdks/web/ 目录结构
+  - 配置 package.json, tsconfig.json, vitest.config.ts, tsup.config.ts
+  - 实现 FeedbackWidget 类：init, sendMessage, 事件处理
+  - 12 个单元测试通过
+  - npm test 通过 (12 passed)
+  - npm run build 成功生成 ESM bundle
+
