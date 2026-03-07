@@ -60,7 +60,6 @@ mod tests {
     // Note: These tests require a running Redis instance.
 
     #[tokio::test]
-    #[ignore = "requires a running Redis instance"]
     async fn presence_set_online_and_check() {
         let url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
         let conn_mgr = redis::Client::open(url.as_str())
@@ -90,7 +89,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires a running Redis instance"]
     async fn pubsub_publish_message() {
         let url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string());
         let conn_mgr = redis::Client::open(url.as_str())

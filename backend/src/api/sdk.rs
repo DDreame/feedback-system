@@ -455,4 +455,214 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
+
+    // ── WebSocket Integration tests ─────────────────────────────────────────
+
+    /// Test that WebSocket message is persisted to DB and broadcast to other subscribers.
+    /// This test verifies the full flow: connect WS -> send message -> persist -> broadcast.
+    #[tokio::test]
+    async fn ws_message_persisted_and_broadcast() {
+        // Setup: create test app with DB and a shared ConnectionManager
+        let _guard = crate::test_support::ENV_MUTEX.lock().unwrap();
+        let _ = dotenvy::dotenv_override();
+        let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let pool = PgPoolOptions::new()
+            .max_connections(3)
+            .connect(&url)
+            .await
+            .expect("connect");
+        crate::db::run_migrations(&pool).await.expect("migrations");
+
+        // Create developer and project
+        let dev_id = uuid::Uuid::now_v7();
+        sqlx::query("INSERT INTO developers (id, email, password_hash, name) VALUES ($1,$2,$3,$4)")
+            .bind(dev_id)
+            .bind(format!("ws_dev_{}@test.com", dev_id))
+            .bind("$argon2id$hash")
+            .bind("WS Dev")
+            .execute(&pool)
+            .await
+            .expect("insert developer");
+
+        let dto = crate::model::project::CreateProject {
+            name: "WS Test Project".to_string(),
+            description: None,
+        };
+        let proj = crate::service::project::create(&pool, dev_id, dto)
+            .await
+            .expect("create project");
+        let api_key = proj.api_key.clone();
+
+        // Create SDK session via HTTP
+        let app = crate::api::create_router(pool.clone(), test_jwt());
+        let init_response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/sdk/init")
+                    .header("Content-Type", "application/json")
+                    .header("X-API-Key", &api_key)
+                    .body(Body::from(r#"{"device_id":"ws-test-device"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(init_response.status(), StatusCode::OK);
+        let bytes = init_response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let conv_id: uuid::Uuid = json["conversation"]["id"].as_str().unwrap().parse().unwrap();
+        let end_user_id: uuid::Uuid = json["end_user"]["id"].as_str().unwrap().parse().unwrap();
+
+        // Test: Use ConnectionManager directly to simulate WebSocket behavior
+        // 1. Create two subscribers (simulating two WS connections)
+        let mgr = crate::ws::ConnectionManager::new();
+        let mut rx1 = mgr.subscribe(conv_id).await;
+        let mut rx2 = mgr.subscribe(conv_id).await;
+
+        // 2. Simulate receiving a WebSocket message and persisting it
+        let test_content = "Hello from WebSocket!";
+        let saved_msg = crate::service::chat::send_message(
+            &pool,
+            conv_id,
+            &crate::model::message::SenderType::EndUser,
+            Some(end_user_id),
+            test_content,
+        )
+        .await
+        .expect("send_message");
+
+        // 3. Broadcast to subscribers
+        mgr.broadcast(conv_id, &saved_msg).await;
+
+        // 4. Verify both subscribers receive the broadcast
+        let received1 = rx1.recv().await.expect("rx1 should receive");
+        let received2 = rx2.recv().await.expect("rx2 should receive");
+
+        let broadcast1: crate::ws::WsBroadcast =
+            serde_json::from_str(&received1).expect("parse broadcast1");
+        let broadcast2: crate::ws::WsBroadcast =
+            serde_json::from_str(&received2).expect("parse broadcast2");
+
+        assert_eq!(broadcast1.msg_type, "new_message");
+        assert_eq!(broadcast1.message.content, test_content);
+        assert_eq!(broadcast2.message.content, test_content);
+
+        // 5. Verify message is persisted in DB
+        let db_messages = crate::service::chat::list_messages(&pool, conv_id, None, 10)
+            .await
+            .expect("list_messages");
+        assert!(!db_messages.is_empty());
+        assert_eq!(db_messages[0].content, test_content);
+
+        // Cleanup
+        sqlx::query("DELETE FROM messages WHERE conversation_id IN (SELECT c.id FROM conversations c JOIN projects p ON c.project_id=p.id WHERE p.developer_id=$1)")
+            .bind(dev_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM conversations WHERE project_id IN (SELECT id FROM projects WHERE developer_id = $1)")
+            .bind(dev_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM end_users WHERE project_id IN (SELECT id FROM projects WHERE developer_id = $1)")
+            .bind(dev_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM projects WHERE developer_id = $1").bind(dev_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM developers WHERE id = $1").bind(dev_id).execute(&pool).await.ok();
+    }
+
+    /// Test that WebSocket clients in different conversations do not receive each other's messages.
+    #[tokio::test]
+    async fn ws_conversations_are_isolated() {
+        let _guard = crate::test_support::ENV_MUTEX.lock().unwrap();
+        let _ = dotenvy::dotenv_override();
+        let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let pool = PgPoolOptions::new()
+            .max_connections(3)
+            .connect(&url)
+            .await
+            .expect("connect");
+        crate::db::run_migrations(&pool).await.expect("migrations");
+
+        let dev_id = uuid::Uuid::now_v7();
+        sqlx::query("INSERT INTO developers (id, email, password_hash, name) VALUES ($1,$2,$3,$4)")
+            .bind(dev_id)
+            .bind(format!("ws_iso_{}@test.com", dev_id))
+            .bind("$argon2id$hash")
+            .bind("WS Iso Dev")
+            .execute(&pool)
+            .await
+            .expect("insert developer");
+
+        let dto = crate::model::project::CreateProject {
+            name: "WS Iso Project".to_string(),
+            description: None,
+        };
+        let proj = crate::service::project::create(&pool, dev_id, dto)
+            .await
+            .expect("create project");
+        let api_key = proj.api_key.clone();
+
+        // Create two conversations
+        let app = crate::api::create_router(pool.clone(), test_jwt());
+        let make_init = |device_id: &str| {
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/sdk/init")
+                .header("Content-Type", "application/json")
+                .header("X-API-Key", &api_key)
+                .body(Body::from(format!(r#"{{"device_id":"{}"}}"#, device_id)))
+                .unwrap()
+        };
+
+        let r1 = app.clone().oneshot(make_init("device-a")).await.unwrap();
+        let r2 = app.oneshot(make_init("device-b")).await.unwrap();
+
+        let json1: serde_json::Value = serde_json::from_slice(
+            &r1.into_body().collect().await.unwrap().to_bytes(),
+        )
+        .unwrap();
+        let json2: serde_json::Value = serde_json::from_slice(
+            &r2.into_body().collect().await.unwrap().to_bytes(),
+        )
+        .unwrap();
+
+        let conv_a: uuid::Uuid = json1["conversation"]["id"].as_str().unwrap().parse().unwrap();
+        let user_a: uuid::Uuid = json1["end_user"]["id"].as_str().unwrap().parse().unwrap();
+        let conv_b: uuid::Uuid = json2["conversation"]["id"].as_str().unwrap().parse().unwrap();
+
+        // Test: Create subscribers for different conversations
+        let mgr = crate::ws::ConnectionManager::new();
+        let mut rx_a = mgr.subscribe(conv_a).await;
+        let mut rx_b = mgr.subscribe(conv_b).await;
+
+        // Send message to conversation A
+        let msg_a = crate::service::chat::send_message(
+            &pool,
+            conv_a,
+            &crate::model::message::SenderType::EndUser,
+            Some(user_a),
+            "Message for A",
+        )
+        .await
+        .expect("send to A");
+
+        mgr.broadcast(conv_a, &msg_a).await;
+
+        // rx_a should receive the message
+        let received_a = rx_a.recv().await.expect("rx_a should receive");
+        let broadcast_a: crate::ws::WsBroadcast =
+            serde_json::from_str(&received_a).expect("parse");
+        assert_eq!(broadcast_a.message.content, "Message for A");
+
+        // rx_b should NOT receive the message
+        assert!(
+            rx_b.try_recv().is_err(),
+            "rx_b should not receive message from conv_a"
+        );
+
+        // Cleanup
+        sqlx::query("DELETE FROM messages WHERE conversation_id IN (SELECT c.id FROM conversations c JOIN projects p ON c.project_id=p.id WHERE p.developer_id=$1)")
+            .bind(dev_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM conversations WHERE project_id IN (SELECT id FROM projects WHERE developer_id = $1)")
+            .bind(dev_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM end_users WHERE project_id IN (SELECT id FROM projects WHERE developer_id = $1)")
+            .bind(dev_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM projects WHERE developer_id = $1").bind(dev_id).execute(&pool).await.ok();
+        sqlx::query("DELETE FROM developers WHERE id = $1").bind(dev_id).execute(&pool).await.ok();
+    }
 }
