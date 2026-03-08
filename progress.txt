@@ -343,6 +343,23 @@
   - npm test 通过 (5 passed)
   - npm run build 构建成功
 
+- [x] Task 1.7.3: 认证状态管理 - 完成
+  - 安装 zustand 状态管理库
+  - 创建 src/stores/authStore.ts: Zustand store
+    - 状态: isAuthenticated, user, accessToken, refreshToken
+    - Actions: login, logout, setUser, setTokens, initialize
+    - 持久化: 使用 localStorage 存储 token
+  - 创建 src/hooks/useAuth.ts: 认证 Hook 封装
+  - 创建 src/components/ProtectedRoute.tsx: 路由保护组件
+    - 未登录时重定向到 /login
+  - 更新 src/App.tsx: 添加路由保护
+  - 创建 src/__tests__/authStore.test.ts: 认证 Store 测试
+    - 测试初始状态、登录后状态、登出后状态、token 持久化
+  - 更新 src/__tests__/App.test.tsx: 添加认证测试
+    - 测试未认证时重定向到登录页
+  - npm test 通过 (12 passed)
+  - npm run build 构建成功
+
 ### 1.8 测试页面
 
 - [x] Task 1.8.1: 初始化测试页面项目 - 完成
