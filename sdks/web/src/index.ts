@@ -5,6 +5,15 @@
 
 import { HttpClient } from './http';
 
+const SESSION_KEY = 'feedback_sdk_session';
+
+export interface SessionData {
+  projectId: string;
+  deviceId: string;
+  endUserId: string;
+  conversationId: string;
+}
+
 export interface FeedbackWidgetConfig {
   /** The API key from the project settings (required) */
   apiKey: string;
@@ -132,8 +141,34 @@ export class FeedbackWidget {
     }
 
     try {
-      // Call the SDK init endpoint
+      // Try to restore session from localStorage
+      const session = this.restoreSession();
+
+      if (session) {
+        // Restore existing session
+        this.endUser = {
+          id: session.endUserId,
+          projectId: session.projectId,
+          deviceId: session.deviceId,
+        };
+
+        this.conversation = {
+          id: session.conversationId,
+          projectId: session.projectId,
+          endUserId: session.endUserId,
+          status: 'open',
+        };
+
+        this.initialized = true;
+        this.connectWebSocket();
+        return;
+      }
+
+      // No existing session - generate new device_id and call init API
+      const deviceId = this.generateDeviceId();
+
       const data: InitResponse = await this.httpClient.post('/api/v1/sdk/init', {
+        device_id: deviceId,
         project_id: this.config.projectId,
       });
 
@@ -151,12 +186,82 @@ export class FeedbackWidget {
         status: data.conversation.status,
       };
 
+      // Save session to localStorage
+      this.saveSession();
+
       this.initialized = true;
 
       // Connect to WebSocket
       this.connectWebSocket();
     } catch (error) {
       throw new Error(`Failed to initialize: ${error}`);
+    }
+  }
+
+  /**
+   * Generate a new device ID using crypto.randomUUID
+   */
+  private generateDeviceId(): string {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    // Fallback for older browsers
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  /**
+   * Save session to localStorage
+   */
+  private saveSession(): void {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
+    const session: SessionData = {
+      projectId: this.config.projectId,
+      deviceId: this.endUser?.deviceId || '',
+      endUserId: this.endUser?.id || '',
+      conversationId: this.conversation?.id || '',
+    };
+
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    } catch (e) {
+      // localStorage may not be available (e.g., private browsing)
+      if (this.config.debug) {
+        console.warn('Failed to save session to localStorage:', e);
+      }
+    }
+  }
+
+  /**
+   * Restore session from localStorage
+   */
+  private restoreSession(): SessionData | null {
+    if (typeof localStorage === 'undefined') {
+      return null;
+    }
+
+    try {
+      const sessionStr = localStorage.getItem(SESSION_KEY);
+      if (!sessionStr) {
+        return null;
+      }
+
+      const session: SessionData = JSON.parse(sessionStr);
+
+      // Verify session belongs to the same project
+      if (session.projectId !== this.config.projectId) {
+        return null;
+      }
+
+      return session;
+    } catch (e) {
+      return null;
     }
   }
 
@@ -215,6 +320,7 @@ export class FeedbackWidget {
 
     const data = await this.httpClient.post<{ message: Message }>('/api/v1/sdk/messages', {
       conversation_id: this.conversation.id,
+      end_user_id: this.endUser?.id,
       message_type: 'text',
       content,
     });

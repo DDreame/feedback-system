@@ -269,6 +269,16 @@
   - npm test 通过 (39 passed)
   - npm run build 成功
 
+- [x] Task 1.6.4: SDK 初始化流程 - 完成
+  - 修改 init 方法：使用 crypto.randomUUID() 生成 device_id
+  - 保存 session 到 localStorage（key: feedback_sdk_session）
+  - 从 localStorage 恢复会话（相同 projectId）
+  - 请求体包含 device_id（原有 project_id）
+  - 修改 sendMessage 方法：添加 end_user_id 到请求体
+  - 5 个单元测试覆盖：device_id 生成、会话缓存、会话恢复
+  - npm test 通过 (44 passed)
+  - npm run build 成功
+
 ### 1.8 测试页面
 
 - [x] Task 1.8.1: 初始化测试页面项目 - 完成
