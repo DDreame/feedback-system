@@ -297,6 +297,25 @@
   - npm test 通过 (54 passed)
   - npm run build 成功
 
+- [x] Task 1.6.7: 聊天窗口 UI - Shadow DOM - 完成
+  - 创建 sdks/web/src/styles.ts: 聊天窗口样式（Shadow DOM 隔离）
+  - 创建 sdks/web/src/ui.ts: WidgetUI 类
+    - mount(): 挂载到指定容器
+    - Shadow DOM 样式隔离
+    - 渲染悬浮按钮、聊天窗口、消息区域、输入框
+    - 窗口显示/隐藏切换
+  - 更新 sdks/web/src/index.ts: 集成 UI
+    - initUI(): 初始化 UI 组件
+    - 消息自动显示在 UI 中
+    - 连接状态实时更新
+  - 创建 sdks/web/tests/ui.test.ts: 10 个测试用例
+    - Shadow DOM 创建和样式隔离
+    - 悬浮按钮渲染
+    - 聊天窗口切换
+    - 聊天窗口结构（header、messages、input area）
+  - npm test 通过 (64 passed)
+  - npm run build 成功
+
 ### 1.8 测试页面
 
 - [x] Task 1.8.1: 初始化测试页面项目 - 完成

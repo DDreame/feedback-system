@@ -4,6 +4,7 @@
  */
 
 import { HttpClient } from './http';
+import { WidgetUI } from './ui';
 
 const SESSION_KEY = 'feedback_sdk_session';
 
@@ -87,6 +88,8 @@ export class FeedbackWidget {
   private reconnectAttempts = 0;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private messageQueue: string[] = [];
+  private widgetUI?: WidgetUI;
+  private containerElement?: HTMLElement;
 
   constructor(config: FeedbackWidgetConfig) {
     // Validate required config
@@ -151,12 +154,39 @@ export class FeedbackWidget {
   }
 
   /**
+   * Resolve container element from config
+   */
+  private resolveContainer(container: HTMLElement | string | undefined): HTMLElement {
+    if (!container) {
+      // Default to body
+      if (typeof document !== 'undefined' && document.body) {
+        return document.body;
+      }
+      throw new Error('No container specified and document.body not available');
+    }
+
+    if (typeof container === 'string') {
+      // It's a selector
+      const element = document.querySelector(container);
+      if (!element) {
+        throw new Error(`Container element not found: ${container}`);
+      }
+      return element as HTMLElement;
+    }
+
+    return container;
+  }
+
+  /**
    * Initialize the SDK - must be called before using other methods
    */
   async init(): Promise<void> {
     if (this.initialized) {
       return;
     }
+
+    // Resolve container element
+    this.containerElement = this.resolveContainer(this.config.container);
 
     try {
       // Try to restore session from localStorage
@@ -178,6 +208,10 @@ export class FeedbackWidget {
         };
 
         this.initialized = true;
+
+        // Initialize UI
+        this.initUI();
+
         this.connectWebSocket();
         return;
       }
@@ -209,6 +243,9 @@ export class FeedbackWidget {
 
       this.initialized = true;
 
+      // Initialize UI
+      this.initUI();
+
       // Connect to WebSocket
       this.connectWebSocket();
     } catch (error) {
@@ -228,6 +265,40 @@ export class FeedbackWidget {
       const r = (Math.random() * 16) | 0;
       const v = c === 'x' ? r : (r & 0x3) | 0x8;
       return v.toString(16);
+    });
+  }
+
+  /**
+   * Initialize the widget UI
+   */
+  private initUI(): void {
+    if (!this.containerElement) {
+      if (this.config.debug) {
+        console.warn('[FeedbackWidget] No container element, UI not initialized');
+      }
+      return;
+    }
+
+    // Create UI instance
+    this.widgetUI = new WidgetUI(this.containerElement);
+
+    // Set up message handler to update UI
+    this.widgetUI.setOnSendMessage((content) => {
+      this.sendMessage(content).catch((err) => {
+        if (this.config.debug) {
+          console.error('[FeedbackWidget] Failed to send message:', err);
+        }
+      });
+    });
+
+    // Add message handler to display incoming messages in UI
+    this.messageHandlers.add((message) => {
+      this.widgetUI?.addMessage(message);
+    });
+
+    // Add connection handler to update UI status
+    this.connectionHandlers.add((connected) => {
+      this.widgetUI?.setConnected(connected);
     });
   }
 
@@ -489,6 +560,10 @@ export class FeedbackWidget {
     this.connectionHandlers.clear();
     this.messageQueue = [];
     this.initialized = false;
+
+    // Clean up UI
+    this.widgetUI?.destroy();
+    this.widgetUI = undefined;
   }
 }
 
