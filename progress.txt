@@ -389,6 +389,67 @@
   - npm test 通过 (20 passed)
   - npm run build 构建成功
 
+- [x] Task 1.7.6: 项目列表页面 - 完成
+  - 创建 src/services/project.ts: 项目服务
+    - listProjects() 调用 GET /api/v1/projects
+    - createProject(name, description) 调用 POST /api/v1/projects
+    - getProject(), deleteProject(), regenerateApiKey()
+    - listConversations() 调用 GET /api/v1/projects/:id/conversations
+  - 更新 src/pages/Projects.tsx:
+    - 使用 useState 管理项目列表状态
+    - 调用 projectService.listProjects()
+    - 渲染项目列表（卡片布局）
+    - 添加创建项目弹窗表单
+    - 加载状态和错误处理
+  - 创建 src/__tests__/Projects.test.tsx:
+    - 测试渲染项目列表
+    - 测试创建项目表单显示
+    - 测试空状态显示
+    - 测试创建项目 API 调用
+    - 测试错误状态显示
+  - npm test 通过 (27 passed)
+  - npm run build 构建成功
+
+- [x] Task 1.7.7: 会话列表页面 - 完成
+  - 更新 src/services/project.ts:
+    - 添加 Conversation, EndUser 类型定义
+    - listConversations(projectId, status?) 支持状态筛选
+  - 更新 src/pages/Inbox.tsx:
+    - 获取当前登录用户的项目列表
+    - 渲染所有项目的会话
+    - 支持按状态筛选 (open/closed)
+    - 显示未读消息计数
+    - 项目选择下拉框
+  - 创建 src/__tests__/Inbox.test.tsx:
+    - 测试渲染会话列表
+    - 测试状态筛选功能
+    - 测试未读计数显示
+  - npm test 通过 (35 passed)
+  - npm run build 构建成功
+
+- [x] Task 1.7.8: 实时聊天界面 - 完成
+  - 创建 src/services/chat.ts:
+    - getMessages(projectId, conversationId) 获取消息列表
+    - sendMessage(projectId, conversationId, content) 发送消息
+    - updateConversationStatus() 更新会话状态
+    - getWebSocketUrl() WebSocket URL 辅助函数
+  - 创建 src/hooks/useWebSocket.ts:
+    - 管理 WebSocket 连接
+    - 处理消息接收
+    - 自动重连逻辑（指数退避）
+  - 更新 src/pages/Conversations.tsx:
+    - 渲染消息列表
+    - 消息输入框
+    - 实时消息更新
+    - 连接状态显示
+  - 更新 src/api/client.ts: 添加 patch 方法
+  - 创建 src/__tests__/Conversations.test.tsx:
+    - 测试渲染消息列表
+    - 测试发送消息
+    - 测试 WebSocket 连接状态
+  - npm test 通过 (43 passed)
+  - npm run build 构建成功
+
 ### 1.8 测试页面
 
 - [x] Task 1.8.1: 初始化测试页面项目 - 完成
@@ -397,6 +458,33 @@
   - 配置 Vitest + React Testing Library + jsdom
   - 创建示例 App.tsx 展示 FeedbackWidget 集成
   - 创建 .env.example 配置模板
+
+- [x] Task 1.8.2: SDK 模拟器 - 完成
+  - 创建 test-page/src/__tests__/App.test.tsx
+    - 测试页面渲染、SDK 初始化状态显示
+  - 更新 test-page/src/App.tsx
+    - 集成完整 Web SDK
+    - 添加设备 ID 输入（支持模拟不同用户）
+    - 添加 API Key 和 Project ID 配置输入
+    - 显示连接状态、消息列表
+    - 支持发送测试消息
+  - 更新 .env.example 配置模板
+  - npm test 通过 (4 passed)
+  - npm run build 构建成功
+
+- [x] Task 1.8.3: 系统状态页面 - 完成
+  - 创建 test-page/src/__tests__/Status.test.tsx
+    - 测试状态页面渲染、健康检查显示
+  - 创建 test-page/src/pages/Status.tsx
+    - 后端健康检查 (GET /health)
+    - 数据库连接状态
+    - Redis 连接状态
+    - WebSocket 连接测试
+  - 更新路由 test-page/src/App.tsx
+    - 使用 react-router-dom 添加导航
+    - 添加路由到状态页面
+  - npm test 通过 (7 passed)
+  - npm run build 构建成功
 
 ### 集成测试
 
