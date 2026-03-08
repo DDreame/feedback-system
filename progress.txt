@@ -249,3 +249,12 @@
   - npm test 通过 (12 passed)
   - npm run build 成功生成 ESM bundle
 
+- [x] Task 1.6.2: SDK 核心配置 - 完成
+  - 扩展 FeedbackWidgetConfig：apiTimeout, debug, onMessage, onConnectionChange
+  - 验证 apiKey 和 projectId 不能为空字符串
+  - 验证 apiUrl 和 wsUrl 必须是有效 URL 格式
+  - 设置默认值：apiTimeout=30000ms, debug=false
+  - 24 个单元测试通过 (新增 15 个配置验证测试)
+  - npm test 通过 (24 passed)
+  - npm run build 成功
+
