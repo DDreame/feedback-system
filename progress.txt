@@ -279,6 +279,24 @@
   - npm test 通过 (44 passed)
   - npm run build 成功
 
+- [x] Task 1.6.5: WebSocket 连接管理 - 完成
+  - 实现 WebSocket 连接：/api/v1/sdk/ws?conversation_id=...&end_user_id=...
+  - 自动重连机制：指数退避算法 (1s → 2s → 4s → ... 最大 30s)
+  - 最大重连次数限制：5 次
+  - 连接状态变化回调 onConnectionChange
+  - 4 个单元测试覆盖：重连触发、退避算法、次数限制、destroy 清理
+  - npm test 通过 (48 passed)
+  - npm run build 成功
+
+- [x] Task 1.6.6: 消息收发逻辑 - 完成
+  - sendViaWebSocket(): WebSocket 连接可用时直接发送
+  - messageQueue: 离线消息队列
+  - flushMessageQueue(): 重连后发送队列中的消息
+  - 接收消息触发 onMessage 回调
+  - 6 个单元测试覆盖：WebSocket 发送、消息队列、断线重连、消息回调
+  - npm test 通过 (54 passed)
+  - npm run build 成功
+
 ### 1.8 测试页面
 
 - [x] Task 1.8.1: 初始化测试页面项目 - 完成

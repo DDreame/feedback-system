@@ -86,6 +86,7 @@ export class FeedbackWidget {
   private initialized = false;
   private reconnectAttempts = 0;
   private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private messageQueue: string[] = [];
 
   constructor(config: FeedbackWidgetConfig) {
     // Validate required config
@@ -137,6 +138,16 @@ export class FeedbackWidget {
       timeout: this.config.apiTimeout,
       debug: this.config.debug,
     });
+
+    // Register onMessage callback from config if provided
+    if (config.onMessage) {
+      this.messageHandlers.add(config.onMessage);
+    }
+
+    // Register onConnectionChange callback from config if provided
+    if (config.onConnectionChange) {
+      this.connectionHandlers.add(config.onConnectionChange);
+    }
   }
 
   /**
@@ -286,6 +297,7 @@ export class FeedbackWidget {
 
     this.ws.onopen = () => {
       this.connectionHandlers.forEach(handler => handler(true));
+      this.flushMessageQueue();
     };
 
     this.ws.onclose = () => {
@@ -364,6 +376,38 @@ export class FeedbackWidget {
   }
 
   /**
+   * Send a message via WebSocket if connected, otherwise queue it
+   */
+  private sendViaWebSocket(content: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      const message = JSON.stringify({
+        type: 'send_message',
+        content,
+      });
+      this.ws.send(message);
+    } else {
+      // Queue message for later
+      this.messageQueue.push(content);
+    }
+  }
+
+  /**
+   * Flush queued messages when reconnected
+   */
+  private flushMessageQueue(): void {
+    while (this.messageQueue.length > 0 && this.ws?.readyState === WebSocket.OPEN) {
+      const content = this.messageQueue.shift();
+      if (content) {
+        const message = JSON.stringify({
+          type: 'send_message',
+          content,
+        });
+        this.ws.send(message);
+      }
+    }
+  }
+
+  /**
    * Send a message
    */
   async sendMessage(content: string): Promise<Message> {
@@ -371,6 +415,22 @@ export class FeedbackWidget {
       throw new Error('SDK not initialized');
     }
 
+    // Try to send via WebSocket first if connected
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.sendViaWebSocket(content);
+      // For WebSocket, we still need to get the message back from the server
+      // The server will echo it back via WebSocket, so we create a temporary message
+      return {
+        id: `temp-${Date.now()}`,
+        conversationId: this.conversation.id,
+        senderType: 'end_user',
+        messageType: 'text',
+        content,
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    // Fallback to HTTP if WebSocket is not available
     const data = await this.httpClient.post<{ message: Message }>('/api/v1/sdk/messages', {
       conversation_id: this.conversation.id,
       end_user_id: this.endUser?.id,
@@ -427,6 +487,7 @@ export class FeedbackWidget {
     this.ws = undefined;
     this.messageHandlers.clear();
     this.connectionHandlers.clear();
+    this.messageQueue = [];
     this.initialized = false;
   }
 }
