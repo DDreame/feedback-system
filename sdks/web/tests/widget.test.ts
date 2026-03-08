@@ -8,7 +8,7 @@ describe('FeedbackWidget', () => {
     vi.clearAllMocks();
   });
 
-  describe('constructor', () => {
+  describe('constructor - config validation', () => {
     it('should throw error when apiKey is missing', () => {
       expect(() => {
         new FeedbackWidget({ projectId: 'test-project' } as FeedbackWidgetConfig);
@@ -19,6 +19,109 @@ describe('FeedbackWidget', () => {
       expect(() => {
         new FeedbackWidget({ apiKey: 'test-key' } as FeedbackWidgetConfig);
       }).toThrow('projectId is required');
+    });
+
+    it('should throw error when apiKey is empty string', () => {
+      expect(() => {
+        new FeedbackWidget({ apiKey: '', projectId: 'test-project' } as FeedbackWidgetConfig);
+      }).toThrow('apiKey is required');
+    });
+
+    it('should throw error when projectId is empty string', () => {
+      expect(() => {
+        new FeedbackWidget({ apiKey: 'test-key', projectId: '' } as FeedbackWidgetConfig);
+      }).toThrow('projectId is required');
+    });
+
+    it('should throw error when apiUrl is invalid URL format', () => {
+      expect(() => {
+        new FeedbackWidget({
+          apiKey: 'test-key',
+          projectId: 'test-project',
+          apiUrl: 'not-a-valid-url',
+        });
+      }).toThrow('apiUrl must be a valid URL');
+    });
+
+    it('should throw error when wsUrl is invalid URL format', () => {
+      expect(() => {
+        new FeedbackWidget({
+          apiKey: 'test-key',
+          projectId: 'test-project',
+          wsUrl: 'not-a-valid-url',
+        });
+      }).toThrow('wsUrl must be a valid URL');
+    });
+
+    it('should accept valid apiUrl', () => {
+      const widget = new FeedbackWidget({
+        apiKey: 'test-key',
+        projectId: 'test-project',
+        apiUrl: 'https://custom.api.com',
+      });
+      expect(widget).toBeDefined();
+    });
+
+    it('should accept valid wsUrl', () => {
+      const widget = new FeedbackWidget({
+        apiKey: 'test-key',
+        projectId: 'test-project',
+        wsUrl: 'wss://custom.ws.com',
+      });
+      expect(widget).toBeDefined();
+    });
+
+    it('should use default apiTimeout of 30000ms', () => {
+      const widget = new FeedbackWidget({
+        apiKey: 'test-key',
+        projectId: 'test-project',
+      });
+      expect(widget).toBeDefined();
+    });
+
+    it('should accept custom apiTimeout', () => {
+      const widget = new FeedbackWidget({
+        apiKey: 'test-key',
+        projectId: 'test-project',
+        apiTimeout: 5000,
+      });
+      expect(widget).toBeDefined();
+    });
+
+    it('should default debug to false', () => {
+      const widget = new FeedbackWidget({
+        apiKey: 'test-key',
+        projectId: 'test-project',
+      });
+      expect(widget).toBeDefined();
+    });
+
+    it('should accept custom debug setting', () => {
+      const widget = new FeedbackWidget({
+        apiKey: 'test-key',
+        projectId: 'test-project',
+        debug: true,
+      });
+      expect(widget).toBeDefined();
+    });
+
+    it('should accept custom container as string selector', () => {
+      const widget = new FeedbackWidget({
+        apiKey: 'test-key',
+        projectId: 'test-project',
+        container: '#my-widget',
+      });
+      expect(widget).toBeDefined();
+    });
+
+    it('should accept custom container as HTMLElement', () => {
+      const container = document.createElement('div');
+      const widget = new FeedbackWidget({
+        apiKey: 'test-key',
+        projectId: 'test-project',
+        container,
+      });
+      expect(widget).toBeDefined();
     });
 
     it('should create widget with valid config', () => {

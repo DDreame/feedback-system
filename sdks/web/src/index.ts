@@ -4,9 +4,9 @@
  */
 
 export interface FeedbackWidgetConfig {
-  /** The API key from the project settings */
+  /** The API key from the project settings (required) */
   apiKey: string;
-  /** The project ID */
+  /** The project ID (required) */
   projectId: string;
   /** Optional: Custom API URL (defaults to current origin) */
   apiUrl?: string;
@@ -14,6 +14,14 @@ export interface FeedbackWidgetConfig {
   wsUrl?: string;
   /** Optional: Container element to mount the widget */
   container?: HTMLElement | string;
+  /** Optional: API timeout in ms (defaults to 30000ms) */
+  apiTimeout?: number;
+  /** Optional: Enable debug logging (defaults to false) */
+  debug?: boolean;
+  /** Optional: Custom message handler */
+  onMessage?: MessageHandler;
+  /** Optional: Custom connection handler */
+  onConnectionChange?: ConnectionHandler;
 }
 
 export interface Message {
@@ -52,7 +60,7 @@ export type ConnectionHandler = (connected: boolean) => void;
  * FeedbackWidget - Main class for the web SDK
  */
 export class FeedbackWidget {
-  private config: Required<FeedbackWidgetConfig>;
+  private config: FeedbackWidgetConfig & { apiUrl: string; wsUrl: string; apiTimeout: number; debug: boolean };
   private endUser?: EndUser;
   private conversation?: Conversation;
   private messageHandlers: Set<MessageHandler> = new Set();
@@ -62,19 +70,45 @@ export class FeedbackWidget {
 
   constructor(config: FeedbackWidgetConfig) {
     // Validate required config
-    if (!config.apiKey) {
+    if (!config.apiKey || config.apiKey.trim() === '') {
       throw new Error('apiKey is required');
     }
-    if (!config.projectId) {
+    if (!config.projectId || config.projectId.trim() === '') {
       throw new Error('projectId is required');
     }
+
+    // Validate apiUrl if provided
+    if (config.apiUrl !== undefined) {
+      try {
+        new URL(config.apiUrl);
+      } catch {
+        throw new Error('apiUrl must be a valid URL');
+      }
+    }
+
+    // Validate wsUrl if provided
+    if (config.wsUrl !== undefined) {
+      try {
+        new URL(config.wsUrl);
+      } catch {
+        throw new Error('wsUrl must be a valid URL');
+      }
+    }
+
+    // Set defaults
+    const defaultApiUrl = typeof self !== 'undefined' ? self.location.origin : 'http://localhost:3000';
+    const defaultWsUrl = typeof self !== 'undefined' ? self.location.origin : 'http://localhost:3000';
 
     this.config = {
       apiKey: config.apiKey,
       projectId: config.projectId,
-      apiUrl: config.apiUrl || self.location.origin,
-      wsUrl: config.wsUrl || self.location.origin,
-      container: config.container || document.body,
+      apiUrl: config.apiUrl || defaultApiUrl,
+      wsUrl: config.wsUrl || defaultWsUrl,
+      container: config.container || (typeof document !== 'undefined' ? document.body : undefined),
+      apiTimeout: config.apiTimeout ?? 30000,
+      debug: config.debug ?? false,
+      onMessage: config.onMessage,
+      onConnectionChange: config.onConnectionChange,
     };
   }
 
