@@ -325,3 +325,13 @@
   - 创建示例 App.tsx 展示 FeedbackWidget 集成
   - 创建 .env.example 配置模板
 
+### 集成测试
+
+- [x] 前后端集成测试 - 完成
+  - 启动 PostgreSQL 和 Redis 容器
+  - 运行后端测试 (143 passed)
+  - 运行 Web SDK 单元测试 (64 passed)
+  - 修复 SDK WebSocket URL 协议转换 (http -> ws)
+  - 修复 SDK WebSocket 认证 (添加 api_key 参数)
+  - 测试页面可通过 http://localhost:5173 访问
+

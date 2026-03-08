@@ -120,7 +120,16 @@ export class FeedbackWidget {
 
     // Set defaults
     const defaultApiUrl = typeof self !== 'undefined' ? self.location.origin : 'http://localhost:3000';
-    const defaultWsUrl = typeof self !== 'undefined' ? self.location.origin : 'http://localhost:3000';
+    // Convert http/https to ws/wss for WebSocket
+    const getWsUrl = (apiUrl: string) => {
+      if (apiUrl.startsWith('https://')) {
+        return 'wss://' + apiUrl.slice(8);
+      } else if (apiUrl.startsWith('http://')) {
+        return 'ws://' + apiUrl.slice(7);
+      }
+      return apiUrl;
+    };
+    const defaultWsUrl = typeof self !== 'undefined' ? getWsUrl(self.location.origin) : 'ws://localhost:3000';
 
     this.config = {
       apiKey: config.apiKey,
@@ -363,7 +372,7 @@ export class FeedbackWidget {
       return;
     }
 
-    const wsUrl = `${this.config.wsUrl}/api/v1/sdk/ws?conversation_id=${this.conversation.id}&end_user_id=${this.endUser?.id}`;
+    const wsUrl = `${this.config.wsUrl}/api/v1/sdk/ws?api_key=${this.config.apiKey}&conversation_id=${this.conversation.id}&end_user_id=${this.endUser?.id}`;
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
