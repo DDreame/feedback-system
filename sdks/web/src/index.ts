@@ -70,6 +70,11 @@ export type ConnectionHandler = (connected: boolean) => void;
 /**
  * FeedbackWidget - Main class for the web SDK
  */
+// Reconnection configuration
+const RECONNECT_INITIAL_DELAY = 1000;
+const RECONNECT_MAX_DELAY = 30000;
+const RECONNECT_MAX_ATTEMPTS = 5;
+
 export class FeedbackWidget {
   private config: FeedbackWidgetConfig & { apiUrl: string; wsUrl: string; apiTimeout: number; debug: boolean };
   private httpClient: HttpClient;
@@ -79,6 +84,8 @@ export class FeedbackWidget {
   private connectionHandlers: Set<ConnectionHandler> = new Set();
   private ws?: WebSocket;
   private initialized = false;
+  private reconnectAttempts = 0;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
 
   constructor(config: FeedbackWidgetConfig) {
     // Validate required config
@@ -269,7 +276,8 @@ export class FeedbackWidget {
    * Connect to WebSocket for real-time messaging
    */
   private connectWebSocket(): void {
-    if (!this.conversation) {
+    // Don't connect if destroyed or not initialized
+    if (!this.initialized || !this.conversation) {
       return;
     }
 
@@ -282,7 +290,7 @@ export class FeedbackWidget {
 
     this.ws.onclose = () => {
       this.connectionHandlers.forEach(handler => handler(false));
-      // TODO: Implement reconnection logic
+      this.scheduleReconnect();
     };
 
     this.ws.onmessage = (event) => {
@@ -308,6 +316,51 @@ export class FeedbackWidget {
     this.ws.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
+  }
+
+  /**
+   * Schedule a reconnection attempt using exponential backoff
+   */
+  private scheduleReconnect(): void {
+    // Don't reconnect if we've exceeded max attempts
+    if (this.reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
+      if (this.config.debug) {
+        console.log('[FeedbackWidget] Max reconnection attempts reached');
+      }
+      return;
+    }
+
+    // Don't reconnect if destroyed
+    if (!this.initialized) {
+      return;
+    }
+
+    // Calculate delay with exponential backoff
+    const delay = Math.min(
+      RECONNECT_INITIAL_DELAY * Math.pow(2, this.reconnectAttempts),
+      RECONNECT_MAX_DELAY
+    );
+
+    this.reconnectAttempts++;
+
+    if (this.config.debug) {
+      console.log(`[FeedbackWidget] Scheduling reconnect attempt ${this.reconnectAttempts} in ${delay}ms`);
+    }
+
+    this.reconnectTimer = setTimeout(() => {
+      this.connectWebSocket();
+    }, delay);
+  }
+
+  /**
+   * Cancel any pending reconnection attempt
+   */
+  private cancelReconnect(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
+    this.reconnectAttempts = 0;
   }
 
   /**
@@ -369,6 +422,7 @@ export class FeedbackWidget {
    * Disconnect and cleanup
    */
   destroy(): void {
+    this.cancelReconnect();
     this.ws?.close();
     this.ws = undefined;
     this.messageHandlers.clear();
