@@ -326,6 +326,23 @@
   - npm install 安装依赖
   - npm run build 构建成功
 
+- [x] Task 1.7.2: 路由与布局 - 完成
+  - 创建 src/__tests__/App.test.tsx 路由测试
+  - 安装 react-router-dom (已在 Task 1.7.1 中安装)
+  - 创建 src/components/Layout.tsx: 侧边栏 + 内容区布局
+  - 创建 src/components/Sidebar.tsx: 侧边栏导航
+  - 创建 src/pages/Dashboard.tsx: 仪表盘页面
+  - 创建 src/pages/Projects.tsx: 项目列表页面
+  - 创建 src/pages/Conversations.tsx: 会话列表页面
+  - 创建 src/pages/Inbox.tsx: 收件箱页面
+  - 创建 src/pages/Settings.tsx: 设置页面
+  - 创建 src/pages/Login.tsx: 登录页面
+  - 配置 src/App.tsx: React Router 路由
+  - 配置 src/main.tsx: BrowserRouter 包裹
+  - 路由结构: /login, / (Dashboard), /projects, /projects/:id/conversations, /inbox, /settings
+  - npm test 通过 (5 passed)
+  - npm run build 构建成功
+
 ### 1.8 测试页面
 
 - [x] Task 1.8.1: 初始化测试页面项目 - 完成
