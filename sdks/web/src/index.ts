@@ -3,6 +3,8 @@
  * Provides a widget for end users to communicate with developers.
  */
 
+import { HttpClient } from './http';
+
 export interface FeedbackWidgetConfig {
   /** The API key from the project settings (required) */
   apiKey: string;
@@ -61,6 +63,7 @@ export type ConnectionHandler = (connected: boolean) => void;
  */
 export class FeedbackWidget {
   private config: FeedbackWidgetConfig & { apiUrl: string; wsUrl: string; apiTimeout: number; debug: boolean };
+  private httpClient: HttpClient;
   private endUser?: EndUser;
   private conversation?: Conversation;
   private messageHandlers: Set<MessageHandler> = new Set();
@@ -110,6 +113,14 @@ export class FeedbackWidget {
       onMessage: config.onMessage,
       onConnectionChange: config.onConnectionChange,
     };
+
+    // Initialize HTTP client
+    this.httpClient = new HttpClient({
+      apiKey: this.config.apiKey,
+      baseUrl: this.config.apiUrl,
+      timeout: this.config.apiTimeout,
+      debug: this.config.debug,
+    });
   }
 
   /**
@@ -122,22 +133,9 @@ export class FeedbackWidget {
 
     try {
       // Call the SDK init endpoint
-      const response = await fetch(`${this.config.apiUrl}/api/v1/sdk/init`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': this.config.apiKey,
-        },
-        body: JSON.stringify({
-          project_id: this.config.projectId,
-        }),
+      const data: InitResponse = await this.httpClient.post('/api/v1/sdk/init', {
+        project_id: this.config.projectId,
       });
-
-      if (!response.ok) {
-        throw new Error(`Init failed: ${response.status}`);
-      }
-
-      const data: InitResponse = await response.json();
 
       this.endUser = {
         id: data.endUser.id,
@@ -215,24 +213,12 @@ export class FeedbackWidget {
       throw new Error('SDK not initialized');
     }
 
-    const response = await fetch(`${this.config.apiUrl}/api/v1/sdk/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': this.config.apiKey,
-      },
-      body: JSON.stringify({
-        conversation_id: this.conversation.id,
-        message_type: 'text',
-        content,
-      }),
+    const data = await this.httpClient.post<{ message: Message }>('/api/v1/sdk/messages', {
+      conversation_id: this.conversation.id,
+      message_type: 'text',
+      content,
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to send message: ${response.status}`);
-    }
-
-    const data = await response.json();
     return data.message;
   }
 
