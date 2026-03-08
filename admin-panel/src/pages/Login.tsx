@@ -1,4 +1,47 @@
+import { useState, FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import { login } from '../services/auth';
+
 function Login() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [errors, setErrors] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
+  const { login: storeLogin } = useAuth();
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setErrors([]);
+
+    // Validate inputs
+    const validationErrors: string[] = [];
+    if (!email.trim()) {
+      validationErrors.push('Email is required');
+    }
+    if (!password.trim()) {
+      validationErrors.push('Password is required');
+    }
+
+    if (validationErrors.length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const result = await login(email, password);
+      storeLogin(result);
+      navigate('/');
+    } catch (err) {
+      setErrors([err instanceof Error ? err.message : 'Login failed']);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div style={{
       display: 'flex',
@@ -15,11 +58,15 @@ function Login() {
         width: '400px',
       }}>
         <h1 style={{ marginBottom: '24px', textAlign: 'center' }}>Login</h1>
-        <form>
+        <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', marginBottom: '8px' }}>Email</label>
+            <label htmlFor="email" style={{ display: 'block', marginBottom: '8px' }}>Email</label>
             <input
+              id="email"
               type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isLoading}
               style={{
                 width: '100%',
                 padding: '12px',
@@ -30,9 +77,13 @@ function Login() {
             />
           </div>
           <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'block', marginBottom: '8px' }}>Password</label>
+            <label htmlFor="password" style={{ display: 'block', marginBottom: '8px' }}>Password</label>
             <input
+              id="password"
               type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={isLoading}
               style={{
                 width: '100%',
                 padding: '12px',
@@ -42,8 +93,24 @@ function Login() {
               }}
             />
           </div>
+          {errors.length > 0 && (
+            <div style={{
+              marginBottom: '16px',
+              padding: '12px',
+              backgroundColor: '#fee2e2',
+              border: '1px solid #fecaca',
+              borderRadius: '4px',
+              color: '#dc2626',
+              fontSize: '14px',
+            }}>
+              {errors.map((err, index) => (
+                <div key={index}>{err}</div>
+              ))}
+            </div>
+          )}
           <button
             type="submit"
+            disabled={isLoading}
             style={{
               width: '100%',
               padding: '12px',
@@ -51,10 +118,11 @@ function Login() {
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: 'pointer',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              opacity: isLoading ? 0.7 : 1,
             }}
           >
-            Sign In
+            {isLoading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
       </div>

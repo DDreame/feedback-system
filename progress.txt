@@ -360,6 +360,35 @@
   - npm test 通过 (12 passed)
   - npm run build 构建成功
 
+- [x] Task 1.7.4: 登录功能 - 完成
+  - 创建 src/api/client.ts: API 客户端
+    - 使用原生 fetch 封装
+    - 请求拦截器添加 Authorization header
+    - 错误处理: ApiError 类
+  - 创建 src/services/auth.ts: 认证服务
+    - login(email, password) 调用 POST /api/v1/auth/login
+    - 返回 accessToken, refreshToken, user
+    - 错误处理: 登录失败抛出异常
+  - 更新 src/pages/Login.tsx: 登录页面
+    - 添加 useState 管理 email/password 状态
+    - 表单提交处理
+    - 调用 authService.login()
+    - 登录成功后调用 useAuth().login()
+    - 添加错误提示和加载状态
+    - 输入验证: email 和 password 必填
+  - 创建 src/__tests__/authService.test.ts: 认证服务测试
+    - 测试登录成功返回 tokens 和 user
+    - 测试登录失败抛出错误
+    - 测试网络错误抛出异常
+  - 创建 src/__tests__/Login.test.tsx: 登录页面测试
+    - 测试渲染登录表单
+    - 测试空表单提交显示验证错误
+    - 测试有效提交调用登录 API
+    - 测试加载状态显示
+    - 测试登录失败显示错误消息
+  - npm test 通过 (20 passed)
+  - npm run build 构建成功
+
 ### 1.8 测试页面
 
 - [x] Task 1.8.1: 初始化测试页面项目 - 完成
