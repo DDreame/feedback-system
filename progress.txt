@@ -258,3 +258,23 @@
   - npm test 通过 (24 passed)
   - npm run build 成功
 
+- [x] Task 1.6.3: HTTP 客户端 - 完成
+  - 实现 HttpClient 类，包含 GET/POST/PUT/DELETE 方法
+  - 自动添加 X-API-Key 认证头
+  - 支持可配置的超时时间
+  - 错误处理：4xx/5xx 响应抛出异常
+  - 支持 debug 模式日志输出
+  - 集成到 FeedbackWidget：替换原有 fetch 调用
+  - 39 个测试通过 (新增 15 个 HTTP 客户端测试)
+  - npm test 通过 (39 passed)
+  - npm run build 成功
+
+### 1.8 测试页面
+
+- [x] Task 1.8.1: 初始化测试页面项目 - 完成
+  - 创建 test-page/ 目录结构
+  - 配置 Vite + React + TypeScript
+  - 配置 Vitest + React Testing Library + jsdom
+  - 创建示例 App.tsx 展示 FeedbackWidget 集成
+  - 创建 .env.example 配置模板
+
